@@ -35,7 +35,10 @@
   .btn.yesil{background:#1b7f3a;color:#fff;border-color:#1b7f3a}
   .btn.kirmizi{background:#fff;color:#b3261e;border-color:#b3261e}
   .ikili{display:flex;gap:8px}.ikili>*{flex:1}
-  .satir{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #eee}
+  .kaydir{position:relative;overflow:hidden;border-top:1px solid #eee}
+  .silArka{position:absolute;right:0;top:0;bottom:0;width:90px;border:none;background:#b3261e;color:#fff;font-weight:700;font-size:15px}
+  .satir{position:relative;display:flex;gap:10px;align-items:flex-start;padding:10px 4px;background:#fff;transition:transform .2s;touch-action:pan-y}
+  .isaretModu{background:#1a3a8f;color:#fff;padding:12px;border-radius:12px;margin-bottom:10px;font-size:14px}
   .no{flex:none;width:28px;height:28px;border-radius:50%;color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
   .no.b{background:#1a3a8f}.no.t{background:#1b7f3a}.no.e{background:#b3261e}
   .kucuk{font-size:13px;color:#666}
@@ -131,6 +134,11 @@
   <div class="kart">
     <label class="alan">⏰ Teslim edilemeyenler için hatırlatma saati</label>
     <input type="time" id="saatAyar">
+    <label class="alan">🏙️ Çalışma bölgesi (adreste ilçe yazmıyorsa burada arar)</label>
+    <div id="bolgeSec" style="display:flex;gap:16px;font-size:16px;padding:4px 0">
+      <label><input type="checkbox" value="bornova" style="width:auto"> Bornova</label>
+      <label><input type="checkbox" value="konak" style="width:auto"> Konak</label>
+    </div>
     <label class="alan">🧭 Yol tarifi uygulaması</label>
     <select id="haritaAyar"><option value="google">Google Haritalar</option><option value="apple">Apple Haritalar</option></select>
   </div>
@@ -144,7 +152,7 @@
     <div class="kucuk">Bekleyen, teslim edilen ve edilemeyen tüm paketleri siler. Ayarlar kalır.</div>
     <button class="btn kirmizi" id="sifirla" style="background:#b3261e;color:#fff">🔄 Her şeyi sıfırla</button>
   </div>
-  <div class="kucuk" style="padding:4px">Bilgiler sadece bu telefonda saklanır. Haritada bulmak için yalnızca adres metni OpenStreetMap'e gönderilir; isim ve telefon gönderilmez.</div>
+  <div class="kucuk" style="padding:4px">Bilgiler sadece bu telefonda saklanır. Haritada bulmak için yalnızca adres metni Google'a veya OpenStreetMap'e gönderilir; isim ve telefon gönderilmez.</div>
 </div></div>
 
 <script>
@@ -154,7 +162,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 // ---------- Veri ----------
-let gecmis = [], paketler = [], ayar = { saat: '10:00', harita: IOS ? 'apple' : 'google' }, konum = null, sekme = 'bekleyen';
+let gecmis = [], paketler = [], ayar = { bolgeler: ['bornova', 'konak'], saat: '10:00', harita: IOS ? 'apple' : 'google' }, konum = null, sekme = 'bekleyen';
 try { paketler = JSON.parse(localStorage.getItem('ptt_paketler') || '[]'); } catch {}
 try { gecmis = JSON.parse(localStorage.getItem('ptt_gecmis') || '[]'); } catch {}
 try { Object.assign(ayar, JSON.parse(localStorage.getItem('ptt_ayar') || '{}')); } catch {}
@@ -187,26 +195,94 @@ function sirala(){
 }
 async function yenidenSirala(){ await konumAl(); sirala(); kaydet(); ciz(); }
 
-// ---------- Haritada bulma (varsayılan Bornova) ----------
-const BASKA_YER = /\b(karşıyaka|karsiyaka|bayraklı|bayrakli|konak|buca|çiğli|cigli|gaziemir|karabağlar|karabaglar|narlıdere|balçova|kemalpaşa|kemalpasa|menemen|torbalı|torbali|urla|çeşme|cesme|seferihisar|menderes|aliağa|foça|tire|ödemiş|bergama|dikili|kepez|muratpaşa|konyaaltı|antalya|istanbul|ankara|bursa|manisa|aydın|denizli|muğla)\b/i;
+// ---------- Haritada bulma: önce Google, olmazsa OpenStreetMap ----------
+// Google API anahtarı (sadece ptt-dagitim.netlify.app'te çalışacak şekilde kısıtlı olmalı)
+const GOOGLE_KEY = '';
+const BOLGELER = {
+  bornova: { ad: 'Bornova', kutu: [27.15, 38.40, 27.35, 38.52] },   // [batı, güney, doğu, kuzey]
+  konak:   { ad: 'Konak',   kutu: [27.04, 38.36, 27.19, 38.45] }
+};
+const ILCE = /\b(bornova|konak|karşıyaka|karsiyaka|bayraklı|bayrakli|buca|çiğli|cigli|gaziemir|karabağlar|karabaglar|narlıdere|balçova|kemalpaşa|kemalpasa|menemen|torbalı|torbali|urla|çeşme|cesme|seferihisar|menderes|aliağa|foça|tire|ödemiş|bergama|dikili|kepez|muratpaşa|konyaaltı|antalya|istanbul|ankara|bursa|manisa|aydın|denizli|muğla)\b/i;
 const bekle = ms => new Promise(r => setTimeout(r, ms));
+const seciliBolgeler = () => (ayar.bolgeler && ayar.bolgeler.length ? ayar.bolgeler : ['bornova']).filter(b => BOLGELER[b]);
+const kutuIcinde = (lat, lon, k) => lon >= k[0] - 0.02 && lon <= k[2] + 0.02 && lat >= k[1] - 0.02 && lat <= k[3] + 0.02;
+
+let googleHazir = null;
+function googleYukle(){
+  if (!GOOGLE_KEY) return Promise.resolve(false);
+  if (googleHazir) return googleHazir;
+  googleHazir = new Promise(res => {
+    window.__gmHazir = () => res(true);
+    const sc = document.createElement('script');
+    sc.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&language=tr&region=TR&callback=__gmHazir`;
+    sc.async = true; sc.onerror = () => res(false); document.head.appendChild(sc);
+    setTimeout(() => res(!!(window.google && google.maps)), 12000);
+  });
+  return googleHazir;
+}
+async function googleAra(sorgu, kutu){
+  if (!(await googleYukle())) return null;
+  try {
+    const g = new google.maps.Geocoder();
+    const { results } = await g.geocode({ address: sorgu, region: 'tr', componentRestrictions: { country: 'TR' },
+      bounds: kutu ? { west: kutu[0], south: kutu[1], east: kutu[2], north: kutu[3] } : undefined });
+    const r = results && results[0]; if (!r) return null;
+    const tip = r.types || [];
+    const kaba = r.geometry.location_type === 'APPROXIMATE' && !tip.includes('route') && !tip.includes('street_address') && !tip.includes('premise');
+    return { lat: r.geometry.location.lat(), lon: r.geometry.location.lng(), yaklasik: kaba, kaynak: 'Google' };
+  } catch { return null; }
+}
+async function osmAra(sorgu, kutu){
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tr' + (kutu ? '&viewbox=' + kutu.join(',') : '') + '&q=' + encodeURIComponent(sorgu), { headers: { 'Accept-Language': 'tr' } });
+    const j = await r.json(); await bekle(1100);
+    if (j[0]) return { lat: +j[0].lat, lon: +j[0].lon, kaynak: 'OSM' };
+  } catch { await bekle(1100); }
+  try {
+    const c = kutu ? `&lat=${(kutu[1] + kutu[3]) / 2}&lon=${(kutu[0] + kutu[2]) / 2}` : '';
+    const r = await fetch('https://photon.komoot.io/api/?limit=1' + c + '&q=' + encodeURIComponent(sorgu));
+    const j = await r.json(); const f = j.features && j.features[0];
+    if (f && f.properties.countrycode === 'TR') return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], kaynak: 'OSM' };
+  } catch {}
+  return null;
+}
+function varyasyonlar(adres){
+  const t = adres.replace(/\b(izmir|türkiye|turkiye)\b/gi, '').replace(/\b35\d{3}\b/, '').replace(/\s*\/\s*$/, '').replace(/\s+/g, ' ').trim();
+  const uzun = t.replace(/\bmah\.?(?=\s|$)/gi, 'Mahallesi').replace(/\bmh\.?(?=\s|$)/gi, 'Mahallesi')
+    .replace(/\b(\d+(?:\/\d+)?)\.?\s*sk\.?(?=\s|$)/gi, '$1. Sokak').replace(/\bsk\.?(?=\s|$)/gi, 'Sokak').replace(/\bsok\.?(?=\s|$)/gi, 'Sokak')
+    .replace(/\b(\d+)\.?\s*cad\.?(?=\s|$)/gi, '$1. Cadde').replace(/\bcd\.?(?=\s|$)/gi, 'Caddesi').replace(/\bcad\.?(?=\s|$)/gi, 'Caddesi').replace(/\bblv\.?(?=\s|$)/gi, 'Bulvarı');
+  const kapisiz = uzun.replace(/\b(no|kat|daire|d)\s*[:.]?\s*\d+[a-z]?(\s*\/\s*\d+)?/gi, '').replace(/\s+/g, ' ').trim();
+  const mah = (t.match(/([A-Za-zÇĞİÖŞÜçğıöşü0-9 .]+?)\s*(mah\b|mah\.|mahallesi|mh\.?)/i) || [])[1];
+  return { tam: uzun, kapisiz, mahalle: mah ? mah.trim() + ' Mahallesi' : null };
+}
 let kuyruk = Promise.resolve();
 function koordinatBul(p){
   kuyruk = kuyruk.then(async () => {
-    const adres = p.adres;
-    const temiz = adres.replace(/\b(bornova|izmir|İzmir|türkiye|turkiye)\b/gi, '').replace(/\b35\d{3}\b/, '').replace(/[\/]/g, ' ').trim();
-    const baska = !/bornova/i.test(adres) && BASKA_YER.test(adres);
-    const den = baska ? [adres + ', Türkiye'] : [temiz + ', Bornova, İzmir'];
-    const mah = adres.match(/([A-Za-zÇĞİÖŞÜçğıöşü0-9 .]+?)\s*(mah\b|mah\.|mahallesi|mh\.?)/i);
-    if (mah) den.push(mah[1].trim() + ' Mahallesi, ' + (baska ? adres.match(BASKA_YER)[1] : 'Bornova, İzmir'));
-    p.bulunamadi = true;
-    for (const q of den) {
-      try {
-        const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tr' + (baska ? '' : '&viewbox=27.15,38.52,27.35,38.40') + '&q=' + encodeURIComponent(q), { headers: { 'Accept-Language': 'tr' } });
-        const j = await r.json(); await bekle(1100);
-        if (j[0]) { p.lat = +j[0].lat; p.lon = +j[0].lon; p.bulunamadi = false; p.yaklasik = q !== den[0]; break; }
-      } catch { await bekle(1100); }
+    const yaziliIlce = (p.adres.match(ILCE) || [])[1];
+    const v = varyasyonlar(p.adres);
+    const anahtar = yaziliIlce && yaziliIlce.toLocaleLowerCase('tr');
+    const bolgeler = yaziliIlce ? [{ ad: yaziliIlce, kutu: (BOLGELER[anahtar] || {}).kutu || null, yazili: true }] : seciliBolgeler().map(b => ({ ...BOLGELER[b] }));
+    const ekle = b => b.yazili ? (BOLGELER[anahtar] && !/izmir/i.test(p.adres) ? ', İzmir' : '') : `, ${b.ad}, İzmir`;
+    let bulunan = null;
+    for (const b of bolgeler) {
+      for (const q of [v.tam, v.kapisiz]) {
+        const r = await googleAra(q + ekle(b), b.kutu);
+        if (r && (!b.kutu || kutuIcinde(r.lat, r.lon, b.kutu))) { bulunan = r; break; }
+      }
+      if (bulunan) break;
     }
+    if (!bulunan || bulunan.yaklasik) {
+      for (const b of bolgeler) {
+        for (const [q, kaba] of [[v.tam, false], [v.kapisiz, false], [v.mahalle, true]]) {
+          if (!q) continue;
+          const r = await osmAra(q + ekle(b), b.kutu);
+          if (r && (!b.kutu || kutuIcinde(r.lat, r.lon, b.kutu))) { if (!bulunan || !kaba) bulunan = { ...r, yaklasik: kaba }; break; }
+        }
+        if (bulunan && !bulunan.yaklasik) break;
+      }
+    }
+    if (bulunan) { p.lat = bulunan.lat; p.lon = bulunan.lon; p.yaklasik = !!bulunan.yaklasik; p.bulunamadi = false; p.kaynak = bulunan.kaynak; }
+    else p.bulunamadi = true;
     sirala(); kaydet(); ciz();
   });
   return kuyruk;
@@ -222,20 +298,22 @@ function yolLinki(p){
 function paketHTML(p, i, siradaki){
   const tip = p.durum === 'bekliyor' ? 'b' : p.durum === 'teslim' ? 't' : 'e';
   const tel = p.tel ? `<a class="ara" href="tel:${esc(p.tel)}">📞 ${esc(p.tel.replace(/^(\d{4})(\d{3})(\d{2})(\d{2})$/, '$1 $2 $3 $4'))}</a>` : '';
-  const yer = p.bulunamadi ? '<div class="uyari">❓ Haritada bulunamadı — sırada en sona kondu</div>' : p.yaklasik ? '<div class="kucuk">≈ Yaklaşık konum (mahalle)</div>' : '';
+  const isaretle = `<button class="btn" style="padding:7px;font-size:13px" data-isaretle="${p.id}">📍 Konumu haritada işaretle</button>`;
+  const yer = p.bulunamadi ? `<div class="uyari">❓ Haritada bulunamadı — sırada en sona kondu</div>${p.durum === 'bekliyor' ? isaretle : ''}`
+            : p.yaklasik ? `<div class="kucuk">≈ Yaklaşık konum (mahalle)</div>${p.durum === 'bekliyor' ? isaretle : ''}` : '';
   if (siradaki) return `<div class="kart siradaki">
       <div class="etiket">SIRADAKİ · <span data-mes="${p.id}">${mesafeYaz(p.mesafe) || 'mesafe hesaplanıyor'}</span></div>
       ${p.isim ? `<div class="isim">${esc(p.isim)}</div>` : ''}<div class="adres">${esc(p.adres)}</div>${yer}${tel}
       <a class="btn mavi" href="${yolLinki(p)}" target="_blank" rel="noopener">🧭 Yol tarifi</a>
       <div class="ikili"><button class="btn yesil" data-teslim="${p.id}">✅ Teslim ettim</button><button class="btn kirmizi" data-edilemedi="${p.id}">❌ Edilemedi</button></div>
     </div>`;
-  return `<div class="satir"><div class="no ${tip}">${i}</div><div style="flex:1;min-width:0">
+  return `<div class="kaydir" data-id="${p.id}"><button class="silArka" data-sil="${p.id}">🗑️ Sil</button><div class="satir"><div class="no ${tip}">${i}</div><div style="flex:1;min-width:0">
       ${p.isim ? `<div style="font-weight:700">${esc(p.isim)}</div>` : ''}<div style="font-size:14px">${esc(p.adres)}</div>${yer}
       ${p.sebep ? `<div class="kucuk">Sebep: ${esc(p.sebep)}</div>` : ''}${p.zaman ? `<div class="kucuk">${new Date(p.zaman).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
       ${tel}
       ${p.durum === 'bekliyor' ? `<div class="kucuk" data-mes="${p.id}">${mesafeYaz(p.mesafe)}</div><div class="ikili"><a class="btn" style="padding:8px" href="${yolLinki(p)}" target="_blank" rel="noopener">🧭</a><button class="btn yesil" style="padding:8px" data-teslim="${p.id}">✅</button><button class="btn kirmizi" style="padding:8px" data-edilemedi="${p.id}">❌</button></div>` : ''}
       ${p.durum !== 'bekliyor' ? `<button class="btn" style="padding:8px;font-size:13px" data-geri="${p.id}">↩️ Bekleyenlere geri al</button>` : ''}
-    </div><button data-sil="${p.id}" style="border:none;background:none;font-size:18px;color:#aaa" aria-label="Sil">🗑️</button></div>`;
+    </div></div></div>`;
 }
 
 let harita = null, katman = null, benIsaret = null;
@@ -263,27 +341,60 @@ function ciz(){
     h += `<button class="btn" id="geriBtn" style="margin:0 0 10px">← Listeye dön</button><div id="harita"></div><div class="lejant"><span style="--r:#1a3a8f">Bekleyen (numara = sıra)</span><span style="--r:#1b7f3a">Teslim</span><span style="--r:#b3261e">Edilemedi</span><span style="--r:#2a7fff">Sen</span></div>`;
   }
   $('icerik').innerHTML = h;
-  if (sekme === 'harita') haritaCiz(B, T, E); else if (harita) { harita.remove(); harita = null; }
+  if (sekme === 'harita') haritaCiz(B, T, E); else if (harita) { harita.remove(); harita = null; benIsaret = null; }
 }
 
-function haritaCiz(B, T, E){
-  if (harita) harita.remove();
-  if (typeof L === 'undefined') { $('harita').innerHTML = '<div class="bos">Harita yüklenemedi. İnterneti kontrol edip sayfayı yenile.</div>'; return; }
-  harita = L.map('harita').setView([38.462, 27.22], 13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(harita);
-  const sinir = [];
-  const pin = (p, renk, yazi, z) => {
-    if (!p.lat) return;
-    const m = L.marker([p.lat, p.lon], { zIndexOffset: z, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:${renk}"><b>${yazi}</b></div>`, iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28] }) }).addTo(harita);
-    m.bindPopup(`<b>${yazi !== '✓' && yazi !== '✕' ? yazi + '. ' : ''}${esc(p.isim || 'İsimsiz')}</b><br>${esc(p.adres)}${p.tel ? `<br><a href="tel:${esc(p.tel)}">📞 ${esc(p.tel)}</a>` : ''}${p.durum === 'bekliyor' ? `<br><a href="${yolLinki(p)}" target="_blank" rel="noopener">🧭 Yol tarifi</a>` : ''}`);
-    sinir.push([p.lat, p.lon]);
+let isaretlenen = null;
+async function haritaCiz(B, T, E){
+  if (harita && harita.remove) harita.remove(); harita = null; benIsaret = null;
+  const kutu = $('harita'); if (!kutu) return;
+  const ip = isaretlenen && paketler.find(p => p.id === isaretlenen);
+  if (ip) kutu.insertAdjacentHTML('beforebegin', `<div class="isaretModu">📍 <b>${esc(ip.isim || ip.adres)}</b> için haritada doğru yere dokun.<button class="btn" id="isaretIptal" style="background:#fff;margin-top:8px">Vazgeç</button></div>`);
+  const ogeler = [];
+  T.forEach(p => p.lat && ogeler.push([p, '#1b7f3a', '✓', 0]));
+  E.forEach(p => p.lat && ogeler.push([p, '#b3261e', '✕', 100]));
+  B.forEach((p, i) => p.lat && ogeler.push([p, '#1a3a8f', String(i + 1), 1000 - i]));
+  const popup = (p, yazi) => `<div style="font-size:14px;max-width:220px"><b>${yazi !== '✓' && yazi !== '✕' ? yazi + '. ' : ''}${esc(p.isim || 'İsimsiz')}</b><br>${esc(p.adres)}${p.tel ? `<br><a href="tel:${esc(p.tel)}">📞 ${esc(p.tel)}</a>` : ''}${p.durum === 'bekliyor' ? `<br><a href="${yolLinki(p)}" target="_blank" rel="noopener">🧭 Yol tarifi</a>` : ''}</div>`;
+  const merkez = { lat: 38.44, lng: 27.17 };
+  const tiklandi = async (lat, lon) => {
+    if (!isaretlenen) return;
+    const p = paketler.find(x => x.id === isaretlenen); isaretlenen = null;
+    if (p) { p.lat = lat; p.lon = lon; p.bulunamadi = false; p.yaklasik = false; p.kaynak = 'elle'; bilgi('📍 Konum kaydedildi.'); }
+    sekme = 'bekleyen'; history.pushState({ sekme }, ''); await yenidenSirala();
   };
-  T.forEach(p => pin(p, '#1b7f3a', '✓', 0));
-  E.forEach(p => pin(p, '#b3261e', '✕', 100));
-  B.forEach((p, i) => pin(p, '#1a3a8f', i + 1, 1000 - i));
-  if (konum) { benIsaret = L.marker([konum.lat, konum.lon], { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="ben"></div>', iconSize: [16, 16] }) }).addTo(harita).bindPopup('Buradasın'); sinir.push([konum.lat, konum.lon]); }
-  if (sinir.length) harita.fitBounds(sinir, { padding: [40, 40], maxZoom: 16 });
-  setTimeout(() => harita && harita.invalidateSize(), 200);
+  if (await googleYukle()) {
+    if (!$('harita') || sekme !== 'harita') return;
+    const m = new google.maps.Map($('harita'), { center: merkez, zoom: 13, mapTypeControl: false, streetViewControl: false, fullscreenControl: false, clickableIcons: false, gestureHandling: 'greedy' });
+    const pen = new google.maps.InfoWindow(), sinir = new google.maps.LatLngBounds();
+    const svgPin = (renk, yazi) => 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="34" height="44" viewBox="0 0 34 44"><path d="M17 1C8 1 1 8 1 17c0 12 16 26 16 26s16-14 16-26C33 8 26 1 17 1z" fill="${renk}" stroke="#fff" stroke-width="2"/><text x="17" y="22" font-family="Arial" font-size="${yazi.length > 1 ? 12 : 14}" font-weight="bold" fill="#fff" text-anchor="middle">${yazi}</text></svg>`);
+    ogeler.forEach(([p, renk, yazi, z]) => {
+      const mk = new google.maps.Marker({ map: m, position: { lat: p.lat, lng: p.lon }, zIndex: z + 10, icon: { url: svgPin(renk, yazi), scaledSize: new google.maps.Size(34, 44), anchor: new google.maps.Point(17, 43) } });
+      mk.addListener('click', () => { pen.setContent(popup(p, yazi)); pen.open(m, mk); });
+      sinir.extend(mk.getPosition());
+    });
+    if (konum) { benIsaret = new google.maps.Marker({ map: m, position: { lat: konum.lat, lng: konum.lon }, zIndex: 5000, icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2a7fff', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 } }); sinir.extend(benIsaret.getPosition()); }
+    if (!sinir.isEmpty()) { m.fitBounds(sinir, 50); google.maps.event.addListenerOnce(m, 'idle', () => { if (m.getZoom() > 16) m.setZoom(16); }); }
+    m.addListener('click', e => tiklandi(e.latLng.lat(), e.latLng.lng()));
+    harita = { tur: 'google', remove: () => {} };
+    return;
+  }
+  if (typeof L === 'undefined') { kutu.innerHTML = '<div class="bos">Harita yüklenemedi. İnterneti kontrol edip sayfayı yenile.</div>'; return; }
+  const lm = L.map('harita').setView([merkez.lat, merkez.lng], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(lm);
+  const sinir = [];
+  ogeler.forEach(([p, renk, yazi, z]) => {
+    L.marker([p.lat, p.lon], { zIndexOffset: z, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:${renk}"><b>${yazi}</b></div>`, iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28] }) }).addTo(lm).bindPopup(popup(p, yazi));
+    sinir.push([p.lat, p.lon]);
+  });
+  if (konum) { benIsaret = L.marker([konum.lat, konum.lon], { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="ben"></div>', iconSize: [16, 16] }) }).addTo(lm).bindPopup('Buradasın'); sinir.push([konum.lat, konum.lon]); }
+  if (sinir.length) lm.fitBounds(sinir, { padding: [40, 40], maxZoom: 16 });
+  lm.on('click', e => tiklandi(e.latlng.lat, e.latlng.lng));
+  setTimeout(() => lm.invalidateSize(), 200);
+  harita = { tur: 'leaflet', remove: () => lm.remove(), lm };
+}
+function benGuncelle(){
+  if (!konum || !benIsaret) return;
+  if (benIsaret.setLatLng) benIsaret.setLatLng([konum.lat, konum.lon]); else if (benIsaret.setPosition) benIsaret.setPosition({ lat: konum.lat, lng: konum.lon });
 }
 
 // ---------- Canlı konum ----------
@@ -293,8 +404,8 @@ if (navigator.geolocation) navigator.geolocation.watchPosition(pos => {
   const simdi = Date.now(); if (simdi - sonCanli < 3000) return; sonCanli = simdi;
   const B = paketler.filter(p => p.durum === 'bekliyor');
   B.forEach(p => { p.mesafe = p.lat ? km(konum, p) : null; document.querySelectorAll(`[data-mes="${p.id}"]`).forEach(el => el.textContent = mesafeYaz(p.mesafe)); });
-  if (benIsaret) benIsaret.setLatLng([konum.lat, konum.lon]);
-  else if (harita && typeof L !== 'undefined') benIsaret = L.marker([konum.lat, konum.lon], { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="ben"></div>', iconSize: [16, 16] }) }).addTo(harita);
+  if (benIsaret) benGuncelle();
+  else if (harita && harita.lm) benIsaret = L.marker([konum.lat, konum.lon], { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="ben"></div>', iconSize: [16, 16] }) }).addTo(harita.lm);
   // Sıradakinden çok daha yakın bir adres var mı?
   const ilk = B[0];
   if (ilk && ilk.mesafe != null) {
@@ -420,6 +531,8 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('button,[data-s],.gunUst'); if (!t) return;
   const bul = id => paketler.find(p => p.id === id);
   if (t.dataset.s) { sekmeyeGit(t.dataset.s); }
+  else if (t.dataset.isaretle) { isaretlenen = t.dataset.isaretle; sekmeyeGit('harita'); }
+  else if (t.id === 'isaretIptal') { isaretlenen = null; ciz(); }
   else if (t.id === 'geriBtn') { history.length > 1 && history.state && history.state.sekme !== 'bekleyen' ? history.back() : sekmeyeGit('bekleyen'); }
   else if (t.id === 'yakinEvet') { yakinOneri = null; await yenidenSirala(); bilgi('Sıra güncellendi.'); }
   else if (t.id === 'yakinHayir') { reddedilen = yakinOneri && yakinOneri.id; yakinOneri = null; ciz(); }
@@ -432,13 +545,17 @@ document.addEventListener('click', async e => {
     panelKapat(); kaydet(); bilgi('❌ Edilemedi olarak işaretlendi. Sıradakine geçiliyor…'); await yenidenSirala();
   }
   else if (t.dataset.geri) { const p = bul(t.dataset.geri); kayitSil(p); p.durum = 'bekliyor'; p.sebep = ''; p.zaman = null; await yenidenSirala(); }
-  else if (t.dataset.sil) { if (confirm('Bu paket silinsin mi?')) { paketler = paketler.filter(p => p.id !== t.dataset.sil); kaydet(); ciz(); } }
+  else if (t.dataset.sil) {
+    const i = paketler.findIndex(p => p.id === t.dataset.sil); if (i < 0) return;
+    sonSilinen = { p: paketler[i], i }; paketler.splice(i, 1); kaydet(); ciz(); geriAlBilgi();
+  }
+  else if (t.id === 'geriAlSil') { if (sonSilinen) { paketler.splice(sonSilinen.i, 0, sonSilinen.p); sonSilinen = null; kaydet(); ciz(); $('bilgiKutu').style.display = 'none'; } }
   else if (t.id === 'siralaBtn') { bilgi('📍 Konum alınıyor…'); await yenidenSirala(); bilgi('Sıralandı.'); }
   else if (t.id === 'hatirlatBtn') { try { window.Notification && Notification.permission === 'default' && Notification.requestPermission(); } catch {} hatirlatKur(); }
   else if (t.id === 'eskiGeri') { paketler.forEach(p => { if (p.durum === 'edilemedi' && p.zaman && p.zaman.slice(0, 10) < bugun()) { p.durum = 'bekliyor'; p.sebep = ''; p.zaman = null; } }); sekme = 'bekleyen'; await yenidenSirala(); }
   else if (t.id === 'afisKapat') { ayar.afisKapandi = bugun(); kaydet(); ciz(); }
   else if (t.id === 'ekleBtn') { panelAc('ekPanel'); }
-  else if (t.id === 'ayarBtn') { $('saatAyar').value = ayar.saat; $('haritaAyar').value = ayar.harita; panelAc('ayarPanel'); }
+  else if (t.id === 'ayarBtn') { document.querySelectorAll('#bolgeSec input').forEach(cb => cb.checked = seciliBolgeler().includes(cb.value)); $('saatAyar').value = ayar.saat; $('haritaAyar').value = ayar.harita; panelAc('ayarPanel'); }
   else if (t.id === 'yeniGun') { if (confirm('Teslim edilenler temizlensin mi?')) { paketler = paketler.filter(p => p.durum !== 'teslim'); kaydet(); ciz(); $('ayarPanel').classList.remove('acik'); } }
   else if (t.id === 'istBtn') { if (!$('istBas').value) aralikSec('hafta'); else istCiz(); panelAc('istPanel'); }
   else if (t.dataset.ar) { aralikSec(t.dataset.ar); }
@@ -454,6 +571,36 @@ document.addEventListener('click', async e => {
 });
 $('saatAyar').onchange = e => { ayar.saat = e.target.value || '10:00'; kaydet(); ciz(); bilgi('Hatırlatma saati: ' + ayar.saat); };
 $('haritaAyar').onchange = e => { ayar.harita = e.target.value; kaydet(); ciz(); };
+document.querySelectorAll('#bolgeSec input').forEach(cb => cb.onchange = () => {
+  const sec = [...document.querySelectorAll('#bolgeSec input:checked')].map(x => x.value);
+  if (!sec.length) { cb.checked = true; bilgi('En az bir bölge seçili olmalı.'); return; }
+  ayar.bolgeler = sec; kaydet();
+  paketler.filter(p => p.durum === 'bekliyor' && (p.bulunamadi || p.yaklasik) && p.kaynak !== 'elle').forEach(koordinatBul);
+  bilgi('Bölge: ' + sec.map(b => BOLGELER[b].ad).join(' + '));
+});
+// ---------- Sola kaydırıp silme ----------
+let sonSilinen = null, kayan = null;
+function geriAlBilgi(){
+  bilgi('🗑️ Silindi.');
+  $('bilgiKutu').innerHTML = '🗑️ Silindi. <button id="geriAlSil" style="float:right;background:none;border:none;color:#ffcc00;font-weight:700;font-size:14px">GERİ AL</button>';
+}
+const kayma = s => +((s.style.transform.match(/-?\d+/) || [0])[0]);
+document.addEventListener('touchstart', e => {
+  const s = e.target.closest('.kaydir .satir'); if (!s) return;
+  document.querySelectorAll('.kaydir .satir').forEach(x => { if (x !== s) x.style.transform = ''; });
+  kayan = { s, x: e.touches[0].clientX, y: e.touches[0].clientY, bas: kayma(s), yatay: null };
+}, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (!kayan) return;
+  const dx = e.touches[0].clientX - kayan.x, dy = e.touches[0].clientY - kayan.y;
+  if (kayan.yatay === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) kayan.yatay = Math.abs(dx) > Math.abs(dy);
+  if (!kayan.yatay) return;
+  kayan.s.style.transition = 'none'; kayan.s.style.transform = `translateX(${Math.max(-90, Math.min(0, kayan.bas + dx))}px)`;
+}, { passive: true });
+document.addEventListener('touchend', () => {
+  if (!kayan) return; const s = kayan.s; s.style.transition = '';
+  s.style.transform = kayma(s) < -45 ? 'translateX(-90px)' : ''; kayan = null;
+});
 
 // ---------- Yazı okuma (OCR) ----------
 let worker = null;
@@ -634,6 +781,7 @@ $('kamera').addEventListener('change', oku);
 $('galeri').addEventListener('change', oku);
 
 // Başlangıç
+googleYukle();
 paketler.forEach(p => { if (p.durum !== 'bekliyor' && p.zaman && !gecmis.some(k => k.id === p.id)) kayitEkle(p); }); kaydet();
 paketler.filter(p => p.durum === 'bekliyor' && !p.lat && !p.bulunamadi).forEach(koordinatBul);
 ciz(); yenidenSirala();
