@@ -6,6 +6,10 @@
 <meta name="theme-color" content="#ffcc00">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>PTT Dağıtım</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-title" content="Dağıtım">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -60,7 +64,7 @@
 </style>
 </head>
 <body>
-<header><h1>📦 PTT Dağıtım</h1><button id="ayarBtn" aria-label="Ayarlar">⚙️</button></header>
+<header><h1 style="display:flex;align-items:center;gap:10px"><img src="logo.svg" alt="" width="34" height="34" style="border-radius:8px;box-shadow:0 0 0 2px #1a3a8f22">PTT Dağıtım</h1><button id="ayarBtn" aria-label="Ayarlar">⚙️</button></header>
 <nav class="sekmeler">
   <button data-s="bekleyen" class="aktif">Bekleyen <span class="say" id="sB">0</span></button>
   <button data-s="teslim">Teslim <span class="say" id="sT">0</span></button>
@@ -108,6 +112,11 @@
     <div class="isim" style="font-size:15px">Yeni gün</div>
     <div class="kucuk">Teslim edilenleri listeden temizler. Bekleyen ve edilemeyenler kalır.</div>
     <button class="btn kirmizi" id="yeniGun">🧹 Teslim edilenleri temizle</button>
+  </div>
+  <div class="kart">
+    <div class="isim" style="font-size:15px">Sıfırla</div>
+    <div class="kucuk">Bekleyen, teslim edilen ve edilemeyen tüm paketleri siler. Ayarlar kalır.</div>
+    <button class="btn kirmizi" id="sifirla" style="background:#b3261e;color:#fff">🔄 Her şeyi sıfırla</button>
   </div>
   <div class="kucuk" style="padding:4px">Bilgiler sadece bu telefonda saklanır. Haritada bulmak için yalnızca adres metni OpenStreetMap'e gönderilir; isim ve telefon gönderilmez.</div>
 </div></div>
@@ -368,6 +377,12 @@ document.addEventListener('click', async e => {
   else if (t.id === 'ekleBtn') { panelAc('ekPanel'); }
   else if (t.id === 'ayarBtn') { $('saatAyar').value = ayar.saat; $('haritaAyar').value = ayar.harita; panelAc('ayarPanel'); }
   else if (t.id === 'yeniGun') { if (confirm('Teslim edilenler temizlensin mi?')) { paketler = paketler.filter(p => p.durum !== 'teslim'); kaydet(); ciz(); $('ayarPanel').classList.remove('acik'); } }
+  else if (t.id === 'sifirla') {
+    if (!paketler.length) { bilgi('Liste zaten boş.'); return; }
+    if (confirm(`Tüm paketler (${paketler.length} adet) silinecek. Emin misin?`) && confirm('Bu geri alınamaz. Son kez soruyorum: sıfırlansın mı?')) {
+      paketler = []; ayar.afisKapandi = null; yakinOneri = null; kaydet(); panelKapat(); sekmeyeGit('bekleyen'); ciz(); bilgi('🔄 Sıfırlandı.');
+    }
+  }
   else if (t.id === 'elleBtn') { adayEkle({ isim: '', adres: '', tel: '', teller: [] }); }
   else if (t.classList.contains('kapat')) { panelKapat(); }
 });
