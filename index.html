@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adres Okuma Testi</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f4f4f4;color:#222}
+  header{background:#ffcc00;padding:16px;text-align:center;font-weight:700;font-size:18px}
+  main{max-width:520px;margin:auto;padding:16px}
+  .card{background:#fff;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .ikili{display:flex;gap:8px}
+  label.btn{flex:1;display:block;text-align:center;background:#1a3a8f;color:#fff;padding:14px 8px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
+  label.btn.acik{background:#fff;color:#1a3a8f;border:2px solid #1a3a8f}
+  input[type=file]{display:none}
+  img{max-width:100%;border-radius:8px;margin-top:12px;display:none}
+  .bar{height:10px;background:#eee;border-radius:5px;overflow:hidden;margin-top:10px;display:none}
+  .bar div{height:100%;width:0;background:#1a3a8f;transition:width .2s}
+  #durum{margin-top:8px;font-size:14px;color:#555}
+  h3{margin:0 0 8px;font-size:15px}
+  textarea{width:100%;min-height:70px;font-size:15px;padding:10px;border:1px solid #ccc;border-radius:8px;font-family:inherit}
+  #ham{min-height:160px;font-size:13px;color:#444}
+  .ok{color:#1b7f3a}.no{color:#b3261e}
+  button{width:100%;padding:12px;margin-top:8px;border:1px solid #1a3a8f;background:#fff;color:#1a3a8f;border-radius:8px;font-size:15px}
+  button.ana{background:#1b7f3a;color:#fff;border:none;font-weight:600}
+  .aday{border:1px solid #ddd;border-radius:8px;padding:8px;margin-bottom:8px}
+  .aday textarea{min-height:50px}
+  .satir{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:14px}
+  .satir .no-k{background:#1a3a8f;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none}
+  .mes{color:#555;white-space:nowrap;font-size:13px}
+  .sil{width:auto;padding:4px 10px;margin:0;border-color:#b3261e;color:#b3261e}
+</style>
+</head>
+<body>
+<header>📦 Adres Okuma Testi</header>
+<main>
+  <div class="card">
+    <div class="ikili">
+      <label class="btn" for="kamera">📷 Fotoğraf çek</label>
+      <label class="btn acik" for="galeri">🖼️ Ekran görüntüsü / galeri</label>
+    </div>
+    <input type="file" id="kamera" accept="image/*" capture="environment">
+    <input type="file" id="galeri" accept="image/*">
+    <img id="onizleme" alt="">
+    <div class="bar" id="bar"><div id="dolum"></div></div>
+    <div id="durum">Etiket, kağıt liste, terminal ekranı — yazı olan her şeyi okur.</div>
+  </div>
+
+  <div class="card">
+    <h3>🏠 Bulunan adresler</h3>
+    <div id="adaylar"><div style="font-size:13px;color:#777">Fotoğraftan sonra burada görünecek. Düzeltip listeye ekleyebilirsin.</div></div>
+  </div>
+
+  <div class="card">
+    <h3>📋 Teslimat listesi (<span id="sayi">0</span>)</h3>
+    <div id="liste"></div>
+    <button class="ana" id="sirala">📍 Konumuma göre sırala (en yakından en uzağa)</button>
+    <div id="siraDurum" style="font-size:13px;margin-top:6px;color:#555"></div>
+  </div>
+
+  <div class="card">
+    <h3>📝 Okunan tüm yazı</h3>
+    <textarea id="ham" readonly></textarea>
+    <button id="kopyala">Sonucu kopyala (bana gönder)</button>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const hataMetni = e => (e && (e.message || e.toString())) || String(e);
+let worker = null;
+let liste = [];
+try { liste = JSON.parse(localStorage.getItem('test_liste') || '[]'); } catch {}
+const kaydet = () => { try { localStorage.setItem('test_liste', JSON.stringify(liste)); } catch {} };
+
+async function getWorker(){
+  if (worker) return worker;
+  $('durum').textContent = 'Türkçe okuma paketi yükleniyor (ilk seferde 10-20 sn sürebilir)…';
+  worker = await Tesseract.createWorker('tur', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+    logger: m => {
+      if (m.status === 'recognizing text') {
+        $('dolum').style.width = Math.round(m.progress * 100) + '%';
+        $('durum').textContent = 'Okunuyor… %' + Math.round(m.progress * 100);
+      }
+    },
+    errorHandler: e => { $('durum').textContent = 'Hata: ' + hataMetni(e); }
+  });
+  return worker;
+}
+
+function resimYukle(src){
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+function dataUrl(file){
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+}
+async function resimAc(file){
+  try { if (window.createImageBitmap) return await createImageBitmap(file); } catch {}
+  try { return await resimYukle(URL.createObjectURL(file)); } catch {}
+  try { return await resimYukle(await dataUrl(file)); } catch {}
+  return null;
+}
+async function hazirla(file){
+  const img = await resimAc(file);
+  if (!img) return null; // açılamazsa ham dosyayı motora vereceğiz
+  return new Promise((res) => {
+    {
+      const max = 2200, s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data;
+      let toplam = 0;
+      for (let i = 0; i < p.length; i += 4) toplam += 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
+      const koyu = toplam / (p.length / 4) < 110; // koyu tema ekran görüntüsü ise ters çevir
+      for (let i = 0; i < p.length; i += 4) {
+        let g = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
+        if (koyu) g = 255 - g;
+        g = Math.max(0, Math.min(255, (g - 128) * 1.4 + 128));
+        p[i] = p[i+1] = p[i+2] = g;
+      }
+      ctx.putImageData(d, 0, 0);
+      res(c);
+    }
+  });
+}
+
+const ADRES = /(mah\b|mah\.|mahalle|mh\.?\b|sok\b|sk\.?\b|sokak|sokağı|cad\b|cd\.?\b|cadde|bulvar|blv\.?|no\s*[:.]?\s*\d|kat\s*[:.]?\s*\d|daire|\bd\s*[:.]\s*\d|apt|apartman|sitesi|blok|bornova|izmir|\b35\d{3}\b)/i;
+const MAH = /(mah\b|mah\.|mahalle|mh\.?\b)/i;
+const ATLA = /(tel\b|gsm|telefon|\+90|\b0?5\d{2}[\s-]?\d{3})/i;
+
+function adresleriBul(metin){
+  const satirlar = metin.split('\n').map(s => s.trim()).filter(s => s.length > 3);
+  const gruplar = []; let g = null, bosluk = 0;
+  for (const s of satirlar) {
+    if (ADRES.test(s) && !ATLA.test(s)) {
+      if (!g || bosluk > 1 || (MAH.test(s) && g.some(x => MAH.test(x)))) { g = []; gruplar.push(g); }
+      g.push(s); bosluk = 0;
+    } else bosluk++;
+  }
+  return gruplar.map(x => x.join(' ').replace(/\s+/g, ' ').trim()).filter(x => x.length > 8);
+}
+
+function adaylariGoster(adresler){
+  const k = $('adaylar'); k.innerHTML = '';
+  if (!adresler.length) { k.innerHTML = '<div class="no" style="font-size:13px">Adres tanınamadı. Aşağıdaki "okunan tüm yazı"ya bak.</div>'; return; }
+  adresler.forEach(a => {
+    const d = document.createElement('div'); d.className = 'aday';
+    d.innerHTML = '<textarea></textarea><button class="ana">➕ Listeye ekle</button>';
+    d.querySelector('textarea').value = a;
+    d.querySelector('button').onclick = () => {
+      const v = d.querySelector('textarea').value.trim(); if (!v) return;
+      liste.push({ adres: v }); kaydet(); listeyiCiz(); d.remove();
+    };
+    k.appendChild(d);
+  });
+}
+
+function listeyiCiz(){
+  $('sayi').textContent = liste.length;
+  $('liste').innerHTML = liste.map((x, i) =>
+    `<div class="satir"><span class="no-k">${i+1}</span><span style="flex:1">${x.adres.replace(/</g,'&lt;')}</span>` +
+    `<span class="mes">${x.mesafe != null ? (x.mesafe < 1 ? Math.round(x.mesafe*1000)+' m' : x.mesafe.toFixed(1)+' km') : (x.bulunamadi ? '❓' : '')}</span>` +
+    `<button class="sil" data-i="${i}">Sil</button></div>`).join('') ||
+    '<div style="font-size:13px;color:#777">Henüz adres yok.</div>';
+  document.querySelectorAll('.sil').forEach(b => b.onclick = () => { liste.splice(+b.dataset.i, 1); kaydet(); listeyiCiz(); });
+}
+
+async function oku(e){
+  const file = e.target.files[0]; if (!file) return;
+  $('onizleme').src = URL.createObjectURL(file); $('onizleme').style.display = 'block';
+  $('bar').style.display = 'block'; $('dolum').style.width = '0';
+  $('ham').value = ''; $('adaylar').innerHTML = '';
+  try {
+    if (typeof Tesseract === 'undefined') throw new Error('Okuma motoru indirilemedi (sayfayı yenile)');
+    $('durum').textContent = 'Fotoğraf hazırlanıyor… (' + (file.type || 'tür bilinmiyor') + ', ' + Math.round(file.size/1024) + ' KB)';
+    let canvas = null;
+    try { canvas = await hazirla(file); } catch { canvas = null; }
+    const w = await getWorker();
+    const t0 = Date.now();
+    const { data } = await w.recognize(canvas || file);
+    $('ham').value = data.text.trim() || '(hiç yazı bulunamadı)';
+    const adresler = adresleriBul(data.text);
+    adaylariGoster(adresler);
+    $('durum').textContent = `Bitti (${((Date.now()-t0)/1000).toFixed(1)} sn) · ${adresler.length} adres bulundu · güven %${Math.round(data.confidence)}`;
+    $('dolum').style.width = '100%';
+  } catch (err) {
+    $('durum').innerHTML = '<span class="no">Hata: ' + hataMetni(err) + '</span>';
+  }
+  e.target.value = '';
+}
+$('kamera').addEventListener('change', oku);
+$('galeri').addEventListener('change', oku);
+
+// ---- Sıralama ----
+const bekle = ms => new Promise(r => setTimeout(r, ms));
+function km(a, b){
+  const R = 6371, r = x => x * Math.PI / 180;
+  const dLat = r(b.lat - a.lat), dLon = r(b.lon - a.lon);
+  const h = Math.sin(dLat/2)**2 + Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+async function koordinat(adres){
+  const temiz = adres.replace(/\b(bornova|izmir|İzmir|türkiye|turkiye)\b/gi, '').replace(/\b35\d{3}\b/, '').trim();
+  const denemeler = [temiz + ', Bornova, İzmir'];
+  const mah = adres.match(/([A-Za-zÇĞİÖŞÜçğıöşü0-9 .]+?)\s*(mah\b|mah\.|mahallesi|mh\.?)/i);
+  if (mah) denemeler.push(mah[1].trim() + ' Mahallesi, Bornova, İzmir');
+  for (const q of denemeler) {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tr&viewbox=27.15,38.52,27.35,38.40&q=' + encodeURIComponent(q);
+    const r = await fetch(url, { headers: { 'Accept-Language': 'tr' } });
+    const j = await r.json();
+    await bekle(1100);
+    if (j[0]) return { lat: +j[0].lat, lon: +j[0].lon };
+  }
+  return null;
+}
+$('sirala').onclick = async () => {
+  if (!liste.length) { $('siraDurum').textContent = 'Önce listeye adres ekle.'; return; }
+  $('siraDurum').textContent = 'Konum alınıyor…';
+  let ben;
+  try {
+    ben = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(
+      p => res({ lat: p.coords.latitude, lon: p.coords.longitude }), rej, { enableHighAccuracy: true, timeout: 15000 }));
+  } catch (e) {
+    $('siraDurum').innerHTML = '<span class="no">Konum alınamadı: ' + hataMetni(e) + '. Konum iznini aç (sayfa https linkten açılmalı).</span>'; return;
+  }
+  for (let i = 0; i < liste.length; i++) {
+    const x = liste[i];
+    if (!x.lat) {
+      $('siraDurum').textContent = `Adresler haritada bulunuyor… ${i+1}/${liste.length}`;
+      try { const k = await koordinat(x.adres); if (k) { x.lat = k.lat; x.lon = k.lon; x.bulunamadi = false; } else x.bulunamadi = true; }
+      catch { x.bulunamadi = true; }
+    }
+  }
+  liste.forEach(x => x.mesafe = x.lat ? km(ben, x) : null);
+  liste.sort((a, b) => (a.mesafe ?? 1e9) - (b.mesafe ?? 1e9));
+  kaydet(); listeyiCiz();
+  const yok = liste.filter(x => x.bulunamadi).length;
+  $('siraDurum').innerHTML = '<span class="ok">✔ Sıralandı.</span>' + (yok ? ` ${yok} adres haritada bulunamadı (❓), en sona kondu.` : '');
+};
+
+$('kopyala').addEventListener('click', async () => {
+  const txt = 'ADRESLER:\n' + [...document.querySelectorAll('#adaylar textarea')].map(t => '- ' + t.value).join('\n') +
+              '\n\nHAM YAZI:\n' + $('ham').value + '\n\n' + $('durum').textContent;
+  try { await navigator.clipboard.writeText(txt); } catch { $('ham').select(); document.execCommand('copy'); }
+  $('kopyala').textContent = 'Kopyalandı ✔';
+  setTimeout(() => $('kopyala').textContent = 'Sonucu kopyala (bana gönder)', 2000);
+});
+
+listeyiCiz();
+</script>
+</body>
+</html>
