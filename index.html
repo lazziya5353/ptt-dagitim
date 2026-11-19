@@ -107,28 +107,34 @@ async function resimAc(file){
 }
 async function hazirla(file){
   const img = await resimAc(file);
-  if (!img) return null; // açılamazsa ham dosyayı motora vereceğiz
-  return new Promise((res) => {
-    {
-      const max = 2200, s = Math.min(1, max / Math.max(img.width, img.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data;
-      let toplam = 0;
-      for (let i = 0; i < p.length; i += 4) toplam += 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
-      const koyu = toplam / (p.length / 4) < 110; // koyu tema ekran görüntüsü ise ters çevir
-      for (let i = 0; i < p.length; i += 4) {
-        let g = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
-        if (koyu) g = 255 - g;
-        g = Math.max(0, Math.min(255, (g - 128) * 1.4 + 128));
-        p[i] = p[i+1] = p[i+2] = g;
-      }
-      ctx.putImageData(d, 0, 0);
-      res(c);
-    }
-  });
+  if (!img) return null;
+  // Küçük fotoğrafı büyüt, büyüğü küçült (motor ~2000px'te en iyi okur)
+  const hedef = 2000, s = Math.min(2.5, hedef / Math.max(img.width, img.height));
+  const W = Math.round(img.width * s), H = Math.round(img.height * s);
+  const yap = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H); return [c, x]; };
+  const [orij] = yap();
+  // Gri + kontrast
+  const [gri, gx] = yap();
+  const d = gx.getImageData(0, 0, W, H), p = d.data, hist = new Array(256).fill(0);
+  let toplam = 0;
+  for (let i = 0; i < p.length; i += 4) { const g = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2]; toplam += g; }
+  const koyu = toplam / (p.length / 4) < 110;
+  for (let i = 0; i < p.length; i += 4) {
+    let g = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
+    if (koyu) g = 255 - g;
+    g = Math.max(0, Math.min(255, (g - 128) * 1.5 + 128));
+    p[i] = p[i+1] = p[i+2] = g; hist[Math.round(g)]++;
+  }
+  gx.putImageData(d, 0, 0);
+  // Siyah-beyaz (Otsu eşiği)
+  const n = p.length / 4; let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sB = 0, wB = 0, enIyi = 0, esik = 128;
+  for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = n - wB; if (!wF) break; sB += t * hist[t];
+    const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > enIyi) { enIyi = v; esik = t; } }
+  const [ikili, ix] = yap(); const d2 = gx.getImageData(0, 0, W, H), q = d2.data;
+  for (let i = 0; i < q.length; i += 4) { const v = q[i] > esik ? 255 : 0; q[i] = q[i+1] = q[i+2] = v; }
+  ix.putImageData(d2, 0, 0);
+  return { orij, gri, ikili };
 }
 
 const ADRES = /(mah\b|mah\.|mahalle|mh\.?\b|sok\b|sk\.?\b|sokak|sokağı|cad\b|cd\.?\b|cadde|bulvar|blv\.?|no\s*[:.]?\s*\d|kat\s*[:.]?\s*\d|daire|\bd\s*[:.]\s*\d|apt|apartman|sitesi|blok|bornova|izmir|\b35\d{3}\b)/i;
@@ -149,7 +155,12 @@ function adresleriBul(metin){
 
 function adaylariGoster(adresler){
   const k = $('adaylar'); k.innerHTML = '';
-  if (!adresler.length) { k.innerHTML = '<div class="no" style="font-size:13px">Adres tanınamadı. Aşağıdaki "okunan tüm yazı"ya bak.</div>'; return; }
+  if (!adresler.length) {
+    const tum = $('ham').value;
+    k.innerHTML = '<div style="font-size:13px;color:#555;margin-bottom:6px">Adres yok, fotoğraftaki tüm yazı:</div><div style="font-size:20px;font-weight:600;white-space:pre-wrap;background:#f6f6f6;padding:10px;border-radius:8px"></div>';
+    k.lastChild.textContent = tum;
+    return;
+  }
   adresler.forEach(a => {
     const d = document.createElement('div'); d.className = 'aday';
     d.innerHTML = '<textarea></textarea><button class="ana">➕ Listeye ekle</button>';
@@ -180,11 +191,25 @@ async function oku(e){
   try {
     if (typeof Tesseract === 'undefined') throw new Error('Okuma motoru indirilemedi (sayfayı yenile)');
     $('durum').textContent = 'Fotoğraf hazırlanıyor… (' + (file.type || 'tür bilinmiyor') + ', ' + Math.round(file.size/1024) + ' KB)';
-    let canvas = null;
-    try { canvas = await hazirla(file); } catch { canvas = null; }
+    let g = null;
+    try { g = await hazirla(file); } catch { g = null; }
     const w = await getWorker();
     const t0 = Date.now();
-    const { data } = await w.recognize(canvas || file);
+    // Birkaç farklı şekilde oku, en iyisini al
+    const denemeler = g
+      ? [[g.gri, '3', 'normal'], [g.orij, '11', 'dağınık yazı'], [g.ikili, '11', 'siyah-beyaz']]
+      : [[file, '3', 'ham']];
+    let data = null, puanEn = -1;
+    for (let k = 0; k < denemeler.length; k++) {
+      const [gorsel, psm] = denemeler[k];
+      $('durum').textContent = `Okunuyor… (${k+1}/${denemeler.length})`;
+      await w.setParameters({ tessedit_pageseg_mode: psm, preserve_interword_spaces: '1' });
+      const r = (await w.recognize(gorsel)).data;
+      const temiz = r.text.replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü]/g, '');
+      const puan = r.confidence * Math.min(1, temiz.length / 6) + temiz.length * 0.2;
+      if (puan > puanEn) { puanEn = puan; data = r; }
+      if (r.confidence > 85 && temiz.length > 20) break; // yeterince iyi, beklemeye gerek yok
+    }
     $('ham').value = data.text.trim() || '(hiç yazı bulunamadı)';
     const adresler = adresleriBul(data.text);
     adaylariGoster(adresler);
