@@ -141,35 +141,81 @@ const ADRES = /(adres|mahallesi|sokağı|caddesi|mah\b|mah\.|mahalle|mh\.?\b|sok
 const MAH = /(mah\b|mah\.|mahalle|mh\.?\b)/i;
 const ATLA = /(tel\b|gsm|telefon|\+90|\b0?5\d{2}[\s-]?\d{3}|vergi|e-?posta|@|mersis|ticaret sicil|fatura|iban|web:|www\.)/i;
 
-function adresleriBul(metin){
-  const satirlar = metin.split('\n').map(s => s.trim()).filter(s => s.length > 3);
-  const gruplar = []; let g = null, bosluk = 0;
-  for (const s of satirlar) {
-    if (ADRES.test(s) && !ATLA.test(s)) {
-      if (!g || bosluk > 1 || (MAH.test(s) && g.some(x => MAH.test(x)))) { g = []; gruplar.push(g); }
-      g.push(s); bosluk = 0;
-    } else bosluk++;
+// --- Okunan yazıyı temizle: güveni düşük kelimeleri ve anlamsız satırları at ---
+function anlamli(sat){
+  const t = sat.replace(/\s+/g, ' ').trim();
+  if (t.length < 3) return false;
+  const harf = (t.match(/[0-9A-Za-zÇĞİÖŞÜçğıöşü]/g) || []).length;
+  if (harf / t.length < 0.65) return false;                       // çok fazla işaret/çöp
+  const kelimeler = t.split(' ');
+  const iyi = kelimeler.filter(k => /^[A-Za-zÇĞİÖŞÜçğıöşü]{3,}[.:,]?$/.test(k) || /\d/.test(k)).length;
+  return iyi / kelimeler.length >= 0.5;                             // kelimelerin yarısı gerçek kelime/sayı olmalı
+}
+function temizSatirlar(r){
+  const out = [];
+  if (r.blocks && r.blocks.length) {
+    for (const b of r.blocks) for (const p of (b.paragraphs || [])) for (const l of (p.lines || [])) {
+      if (l.confidence < 50) continue;
+      const kel = (l.words || []).filter(w => w.confidence >= 45).map(w => w.text);
+      const t = (kel.length ? kel.join(' ') : l.text).replace(/[|«»©®_~]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (anlamli(t)) out.push(t);
+    }
+    return out;
   }
-  const SON = /^(.*\b(bornova|izmir|İZMİR|İzmir|antalya|ANTALYA|istanbul|İSTANBUL|ankara|ANKARA|türkiye|TÜRKİYE|\d{5}))\b/i;
-  return gruplar.map(x => { let a = x.join(' ').replace(/\s+/g, ' ').trim(); const m = a.match(new RegExp(SON.source.replace('^(.*','^(.*'), 'i')); if (m) a = m[1]; return a; })
-                .filter(x => x.length > 8 && MAH.test(x) || /(sk|sok|cad|cd|bulv)/i.test(x));
+  return r.text.split('\n').map(x => x.replace(/[|«»©®_~]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(anlamli);
 }
 
-function adaylariGoster(adresler){
+const ETIKET = /(sayın|sayin|alıcı|alici|gönderen|gonderen|teslim|ad soyad|adı soyadı|müşteri|musteri)\s*:?\s*/i;
+const ISIM_DEGIL = /(fatura|tarih|zaman|tutar|toplam|vergi|no\b|tip|şekli|sekli|kdv|iskonto|ödeme|odeme|mal|hizmet|ltd|şti|a\.ş|san\.|tic\.|arşiv|arsiv|kargo|ptt|barkod|adet|desi|tel|e-?posta)/i;
+function isimMi(t){
+  const x = t.replace(ETIKET, '').trim();
+  if (!x || /\d/.test(x) || x.includes(':') || ISIM_DEGIL.test(x) || ADRES.test(x)) return null;
+  const k = x.split(' ').filter(Boolean);
+  if (k.length < 2 || k.length > 4) return null;
+  if (!k.every(w => /^[A-Za-zÇĞİÖŞÜçğıöşü.]{2,}$/.test(w))) return null;
+  return x;
+}
+function adresleriBul(satirlar){
+  const sonuc = []; let i = 0;
+  while (i < satirlar.length) {
+    const s = satirlar[i];
+    if (ADRES.test(s) && !ATLA.test(s)) {
+      const grup = [s.replace(/^adres\s*:?\s*/i, '')]; let j = i + 1;
+      while (j < satirlar.length && j <= i + 3 && ADRES.test(satirlar[j]) && !ATLA.test(satirlar[j]) && !(MAH.test(satirlar[j]) && MAH.test(grup.join(' ')))) { grup.push(satirlar[j]); j++; }
+      let adres = grup.join(' ').replace(/\s+/g, ' ').trim();
+      const m = adres.match(/^(.*\b(bornova|izmir|antalya|istanbul|ankara|türkiye|\d{5}))\b/i); if (m) adres = m[1];
+      if (adres.length > 8 && (MAH.test(adres) || /(sk\b|sok|cad|cd\b|bulv|mahallesi|sokak|caddesi)/i.test(adres))) {
+        let isim = '';
+        for (let k = i - 1; k >= Math.max(0, i - 3) && !isim; k--) {
+          isim = isimMi(satirlar[k]) || '';
+          if (!isim && ETIKET.test(satirlar[k]) && satirlar[k + 1] && k + 1 < i) isim = isimMi(satirlar[k + 1]) || '';
+        }
+        sonuc.push({ isim, adres });
+      }
+      i = j;
+    } else i++;
+  }
+  return sonuc;
+}
+
+function adaylariGoster(adresler, temizMetin){
   const k = $('adaylar'); k.innerHTML = '';
   if (!adresler.length) {
-    const tum = $('ham').value;
-    k.innerHTML = '<div style="font-size:13px;color:#555;margin-bottom:6px">Adres yok, fotoğraftaki tüm yazı:</div><div style="font-size:20px;font-weight:600;white-space:pre-wrap;background:#f6f6f6;padding:10px;border-radius:8px"></div>';
-    k.lastChild.textContent = tum;
+    k.innerHTML = '<div style="font-size:15px;font-weight:600;color:#b3261e;margin-bottom:8px">Burada adres yok.</div>' +
+      '<div style="font-size:13px;color:#555;margin-bottom:6px">Yazan yazılar şunlar:</div>' +
+      '<div style="font-size:17px;line-height:1.5;white-space:pre-wrap;background:#f6f6f6;padding:12px;border-radius:8px"></div>';
+    k.lastChild.textContent = temizMetin || '(okunabilir yazı bulunamadı)';
     return;
   }
   adresler.forEach(a => {
     const d = document.createElement('div'); d.className = 'aday';
-    d.innerHTML = '<textarea></textarea><button class="ana">➕ Listeye ekle</button>';
-    d.querySelector('textarea').value = a;
+    d.innerHTML = '<div style="font-size:12px;color:#555">👤 İsim</div><input style="width:100%;font-size:16px;padding:8px;border:1px solid #ccc;border-radius:8px;margin-bottom:6px">' +
+                  '<div style="font-size:12px;color:#555">🏠 Adres</div><textarea></textarea><button class="ana">➕ Listeye ekle</button>';
+    d.querySelector('input').value = a.isim; d.querySelector('input').placeholder = 'İsim bulunamadı';
+    d.querySelector('textarea').value = a.adres;
     d.querySelector('button').onclick = () => {
       const v = d.querySelector('textarea').value.trim(); if (!v) return;
-      liste.push({ adres: v }); kaydet(); listeyiCiz(); d.remove();
+      liste.push({ isim: d.querySelector('input').value.trim(), adres: v }); kaydet(); listeyiCiz(); d.remove();
     };
     k.appendChild(d);
   });
@@ -178,7 +224,7 @@ function adaylariGoster(adresler){
 function listeyiCiz(){
   $('sayi').textContent = liste.length;
   $('liste').innerHTML = liste.map((x, i) =>
-    `<div class="satir"><span class="no-k">${i+1}</span><span style="flex:1">${x.adres.replace(/</g,'&lt;')}</span>` +
+    `<div class="satir"><span class="no-k">${i+1}</span><span style="flex:1">${x.isim ? '<b>'+x.isim.replace(/</g,'&lt;')+'</b><br>' : ''}${x.adres.replace(/</g,'&lt;')}</span>` +
     `<span class="mes">${x.mesafe != null ? (x.mesafe < 1 ? Math.round(x.mesafe*1000)+' m' : x.mesafe.toFixed(1)+' km') : (x.bulunamadi ? '❓' : '')}</span>` +
     `<button class="sil" data-i="${i}">Sil</button></div>`).join('') ||
     '<div style="font-size:13px;color:#777">Henüz adres yok.</div>';
@@ -206,19 +252,19 @@ async function oku(e){
       const [gorsel, psm] = denemeler[k];
       $('durum').textContent = `Okunuyor… (${k+1}/${denemeler.length})`;
       await w.setParameters({ tessedit_pageseg_mode: psm, preserve_interword_spaces: '1' });
-      const r = (await w.recognize(gorsel)).data;
-      tumMetinler.push(r.text);
-      const temiz = r.text.replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü]/g, '');
+      const r = (await w.recognize(gorsel, {}, { text: true, blocks: true })).data;
+      r.temiz = temizSatirlar(r); tumMetinler.push(r.temiz);
+      const temiz = r.temiz.join('').replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü]/g, '');
       const puan = r.confidence * Math.min(1, temiz.length / 6) + temiz.length * 0.2;
       if (puan > puanEn) { puanEn = puan; data = r; }
     }
     $('ham').value = data.text.trim() || '(hiç yazı bulunamadı)';
     const gorulen = new Set(), adresler = [];
-    for (const m of [data.text, ...tumMetinler]) for (const a of adresleriBul(m)) {
-      const anahtar = a.toLocaleLowerCase('tr').replace(/[^a-zçğıöşü0-9]/g, '').slice(0, 25);
+    for (const m of [data.temiz, ...tumMetinler]) for (const a of adresleriBul(m)) {
+      const anahtar = a.adres.toLocaleLowerCase('tr').replace(/[^a-zçğıöşü0-9]/g, '').slice(0, 25);
       if (!gorulen.has(anahtar)) { gorulen.add(anahtar); adresler.push(a); }
     }
-    adaylariGoster(adresler);
+    adaylariGoster(adresler, data.temiz.join('\n'));
     $('durum').textContent = `Bitti (${((Date.now()-t0)/1000).toFixed(1)} sn) · ${adresler.length} adres bulundu · güven %${Math.round(data.confidence)}`;
     $('dolum').style.width = '100%';
   } catch (err) {
