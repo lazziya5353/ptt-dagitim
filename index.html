@@ -137,9 +137,9 @@ async function hazirla(file){
   return { orij, gri, ikili };
 }
 
-const ADRES = /(mah\b|mah\.|mahalle|mh\.?\b|sok\b|sk\.?\b|sokak|sokağı|cad\b|cd\.?\b|cadde|bulvar|blv\.?|no\s*[:.]?\s*\d|kat\s*[:.]?\s*\d|daire|\bd\s*[:.]\s*\d|apt|apartman|sitesi|blok|bornova|izmir|\b35\d{3}\b)/i;
+const ADRES = /(adres|mahallesi|sokağı|caddesi|mah\b|mah\.|mahalle|mh\.?\b|sok\b|sk\.?\b|sokak|sokağı|cad\b|cd\.?\b|cadde|bulvar|blv\.?|no\s*[:.]?\s*\d|kat\s*[:.]?\s*\d|daire\b|\bd\s*[:.]\s*\d|apt|apartman|sitesi|blok|bornova|izmir|\b35\d{3}\b)/i;
 const MAH = /(mah\b|mah\.|mahalle|mh\.?\b)/i;
-const ATLA = /(tel\b|gsm|telefon|\+90|\b0?5\d{2}[\s-]?\d{3})/i;
+const ATLA = /(tel\b|gsm|telefon|\+90|\b0?5\d{2}[\s-]?\d{3}|vergi|e-?posta|@|mersis|ticaret sicil|fatura|iban|web:|www\.)/i;
 
 function adresleriBul(metin){
   const satirlar = metin.split('\n').map(s => s.trim()).filter(s => s.length > 3);
@@ -150,7 +150,9 @@ function adresleriBul(metin){
       g.push(s); bosluk = 0;
     } else bosluk++;
   }
-  return gruplar.map(x => x.join(' ').replace(/\s+/g, ' ').trim()).filter(x => x.length > 8);
+  const SON = /^(.*\b(bornova|izmir|İZMİR|İzmir|antalya|ANTALYA|istanbul|İSTANBUL|ankara|ANKARA|türkiye|TÜRKİYE|\d{5}))\b/i;
+  return gruplar.map(x => { let a = x.join(' ').replace(/\s+/g, ' ').trim(); const m = a.match(new RegExp(SON.source.replace('^(.*','^(.*'), 'i')); if (m) a = m[1]; return a; })
+                .filter(x => x.length > 8 && MAH.test(x) || /(sk|sok|cad|cd|bulv)/i.test(x));
 }
 
 function adaylariGoster(adresler){
@@ -197,21 +199,25 @@ async function oku(e){
     const t0 = Date.now();
     // Birkaç farklı şekilde oku, en iyisini al
     const denemeler = g
-      ? [[g.gri, '3', 'normal'], [g.orij, '11', 'dağınık yazı'], [g.ikili, '11', 'siyah-beyaz']]
+      ? [[g.gri, '3', 'normal'], [g.gri, '4', 'sütun'], [g.orij, '11', 'dağınık yazı'], [g.ikili, '6', 'siyah-beyaz']]
       : [[file, '3', 'ham']];
-    let data = null, puanEn = -1;
+    let data = null, puanEn = -1; const tumMetinler = [];
     for (let k = 0; k < denemeler.length; k++) {
       const [gorsel, psm] = denemeler[k];
       $('durum').textContent = `Okunuyor… (${k+1}/${denemeler.length})`;
       await w.setParameters({ tessedit_pageseg_mode: psm, preserve_interword_spaces: '1' });
       const r = (await w.recognize(gorsel)).data;
+      tumMetinler.push(r.text);
       const temiz = r.text.replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü]/g, '');
       const puan = r.confidence * Math.min(1, temiz.length / 6) + temiz.length * 0.2;
       if (puan > puanEn) { puanEn = puan; data = r; }
-      if (r.confidence > 85 && temiz.length > 20) break; // yeterince iyi, beklemeye gerek yok
     }
     $('ham').value = data.text.trim() || '(hiç yazı bulunamadı)';
-    const adresler = adresleriBul(data.text);
+    const gorulen = new Set(), adresler = [];
+    for (const m of [data.text, ...tumMetinler]) for (const a of adresleriBul(m)) {
+      const anahtar = a.toLocaleLowerCase('tr').replace(/[^a-zçğıöşü0-9]/g, '').slice(0, 25);
+      if (!gorulen.has(anahtar)) { gorulen.add(anahtar); adresler.push(a); }
+    }
     adaylariGoster(adresler);
     $('durum').textContent = `Bitti (${((Date.now()-t0)/1000).toFixed(1)} sn) · ${adresler.length} adres bulundu · güven %${Math.round(data.confidence)}`;
     $('dolum').style.width = '100%';
