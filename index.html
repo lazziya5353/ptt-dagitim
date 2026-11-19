@@ -190,7 +190,8 @@ function konumAl(){
 function sirala(){
   const b = paketler.filter(p => p.durum === 'bekliyor');
   b.forEach(p => p.mesafe = (konum && p.lat) ? km(konum, p) : null);
-  b.sort((x, y) => (x.mesafe ?? 1e9) - (y.mesafe ?? 1e9));
+  const bilinen = b.filter(p => p.mesafe != null).sort((x, y) => x.mesafe - y.mesafe);
+  let k = 0; for (let i = 0; i < b.length; i++) if (b[i].mesafe != null) b[i] = bilinen[k++];
   const diger = paketler.filter(p => p.durum !== 'bekliyor');
   paketler = [...b, ...diger];
 }
@@ -247,43 +248,55 @@ async function osmAra(sorgu, kutu){
   } catch {}
   return null;
 }
-function varyasyonlar(adres){
-  const t = adres.replace(/\b(izmir|türkiye|turkiye)\b/gi, '').replace(/\b35\d{3}\b/, '').replace(/\s*\/\s*$/, '').replace(/\s+/g, ' ').trim();
-  const uzun = t.replace(/\bmah\.?(?=\s|$)/gi, 'Mahallesi').replace(/\bmh\.?(?=\s|$)/gi, 'Mahallesi')
-    .replace(/\b(\d+(?:\/\d+)?)\.?\s*sk\.?(?=\s|$)/gi, '$1. Sokak').replace(/\bsk\.?(?=\s|$)/gi, 'Sokak').replace(/\bsok\.?(?=\s|$)/gi, 'Sokak')
-    .replace(/\b(\d+)\.?\s*cad\.?(?=\s|$)/gi, '$1. Cadde').replace(/\bcd\.?(?=\s|$)/gi, 'Caddesi').replace(/\bcad\.?(?=\s|$)/gi, 'Caddesi').replace(/\bblv\.?(?=\s|$)/gi, 'Bulvarı');
-  const kapisiz = uzun.replace(/\b(no|kat|daire|d)\s*[:.]?\s*\d+[a-z]?(\s*\/\s*\d+)?/gi, '').replace(/\s+/g, ' ').trim();
-  const mah = (t.match(/([A-Za-zÇĞİÖŞÜçğıöşü0-9 .]+?)\s*(mah\b|mah\.|mahallesi|mh\.?)/i) || [])[1];
-  return { tam: uzun, kapisiz, mahalle: mah ? mah.trim() + ' Mahallesi' : null };
+const IZMIR_ILCE = /(bornova|konak|karşıyaka|karsiyaka|bayraklı|bayrakli|buca|çiğli|cigli|gaziemir|karabağlar|karabaglar|narlıdere|narlidere|balçova|balcova|kemalpaşa|kemalpasa|menemen|torbalı|torbali|urla|çeşme|cesme|seferihisar|menderes|aliağa|aliaga|foça|foca|tire|ödemiş|odemis|bergama|dikili)/i;
+const kucuk = s => s.toLocaleLowerCase('tr');
+const ilceAdi = s => s ? s.charAt(0).toLocaleUpperCase('tr') + s.slice(1) : s;
+// Adresi parçalarına ayır: ilçe, il, mahalle, sokak/cadde, kapı no
+function parcala(adres){
+  let t = ' ' + adres.replace(/[,\/]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  const k = kucuk(t);
+  const ilceM = k.match(new RegExp('\\s' + IZMIR_ILCE.source + '\\s', 'i')) || k.match(ILCE);
+  const ilce = ilceM ? ilceM[1] : null;
+  const baskaIl = adres.match(/(antalya|istanbul|ankara|bursa|manisa|aydın|denizli|muğla)/i);
+  const il = baskaIl ? ilceAdi(kucuk(baskaIl[1])) : (/izmir|İzmir|İZMİR/.test(adres) || (ilce && IZMIR_ILCE.test(ilce)) ? 'İzmir' : null);
+  const temiz = t.replace(/\b35\d{3}\b/g, ' ').replace(/(^|\s)(izmir|İzmir|İZMİR|türkiye|turkiye|Türkiye|TÜRKİYE)(?=\s)/g, ' ')
+                 .replace(new RegExp('(^|\\s)(' + IZMIR_ILCE.source.slice(1, -1) + ')(?=\\s)', 'gi'), ' ').replace(/\s+/g, ' ').trim();
+  // Mahalle: "mah/mahallesi" kelimesinden önceki, rakam ve sokak içermeyen 1-2 kelime
+  const mm = temiz.match(/((?:[A-Za-zÇĞİÖŞÜçğıöşü.]+\s){0,1}[A-Za-zÇĞİÖŞÜçğıöşü.]+)\s+(mah\.?|mahallesi|mahalle|mh\.?)(?=\s|$)/i);
+  const mahalle = mm ? mm[1].split(' ').filter(w => !/^(sk|sok|sokak|cad|cd|cadde|caddesi|no)\.?$/i.test(w)).join(' ') : null;
+  // Sokak / cadde: "1320 sokak", "1320. sk", "372/5 sk", "Atatürk cad"
+  const sm = adres.match(/(\d+(?:\/\d+)?)\s*\.?\s*(sokak|sokağı|sok\.?|sk\.?)(?=\s|,|$)/i) || adres.match(/(sokak|sokağı|sok\.?|sk\.?)\s*(\d+(?:\/\d+)?)/i);
+  const sokak = sm ? (/^\d/.test(sm[1]) ? sm[1] : sm[2]) + '. Sokak' : null;
+  const cm = adres.match(/((?:[A-Za-zÇĞİÖŞÜçğıöşü0-9.]+\s){0,2}[A-Za-zÇĞİÖŞÜçğıöşü0-9.]+)\s+(caddesi|cadde|cad\.?|cd\.?|bulvarı|bulvar|blv\.?)(?=\s|,|$)/i);
+  const caddeAd = cm ? cm[1].split(' ').filter(w => !/^(mah\.?|mahallesi|mh\.?|no.*|\d+)$/i.test(w)).slice(-2).join(' ') : '';
+  const cadde = caddeAd ? caddeAd + (/bul|blv/i.test(cm[2]) ? ' Bulvarı' : ' Caddesi') : null;
+  return { ilce, il, mahalle, yol: sokak || cadde };
 }
 let kuyruk = Promise.resolve();
 function koordinatBul(p){
   kuyruk = kuyruk.then(async () => {
-    const yaziliIlce = (p.adres.match(ILCE) || [])[1];
-    const v = varyasyonlar(p.adres);
-    const anahtar = yaziliIlce && yaziliIlce.toLocaleLowerCase('tr');
-    const bolgeler = yaziliIlce ? [{ ad: yaziliIlce, kutu: (BOLGELER[anahtar] || {}).kutu || null, yazili: true }] : seciliBolgeler().map(b => ({ ...BOLGELER[b] }));
-    const ekle = b => b.yazili ? (BOLGELER[anahtar] && !/izmir/i.test(p.adres) ? ', İzmir' : '') : `, ${b.ad}, İzmir`;
+    const a = parcala(p.adres);
+    // Hangi ilçelerde aranacak: adreste yazıyorsa o, yoksa Ayarlar'daki bölgeler
+    const yerler = a.ilce ? [{ ad: ilceAdi(a.ilce), il: a.il, kutu: (BOLGELER[kucuk(a.ilce)] || {}).kutu || null }]
+                          : seciliBolgeler().map(b => ({ ad: BOLGELER[b].ad, il: 'İzmir', kutu: BOLGELER[b].kutu }));
+    const son = y => [y.ad, y.il].filter(Boolean).join(', ');
     let bulunan = null;
-    for (const b of bolgeler) {
-      for (const q of [v.tam, v.kapisiz]) {
-        const r = await googleAra(q + ekle(b), b.kutu);
-        if (r && (!b.kutu || kutuIcinde(r.lat, r.lon, b.kutu))) { bulunan = r; break; }
+    for (const y of yerler) {
+      // en kesinden en kabaya doğru sorgular
+      const sorgular = [];
+      if (a.yol && a.mahalle) sorgular.push([`${a.yol}, ${a.mahalle} Mahallesi, ${son(y)}`, false]);
+      if (a.yol) sorgular.push([`${a.yol}, ${son(y)}`, false]);
+      sorgular.push([p.adres.replace(/\b35\d{3}\b/, '') + (a.ilce ? '' : ', ' + son(y)), false]);
+      if (a.mahalle) sorgular.push([`${a.mahalle} Mahallesi, ${son(y)}`, true]);
+      for (const [q, kaba] of sorgular) {
+        if (!kaba) { const g = await googleAra(q, y.kutu); if (g && (!y.kutu || kutuIcinde(g.lat, g.lon, y.kutu))) { bulunan = g; break; } }
+        const r = await osmAra(q, y.kutu);
+        if (r && (!y.kutu || kutuIcinde(r.lat, r.lon, y.kutu))) { bulunan = { ...r, yaklasik: kaba }; break; }
       }
       if (bulunan) break;
     }
-    if (!bulunan || bulunan.yaklasik) {
-      for (const b of bolgeler) {
-        for (const [q, kaba] of [[v.tam, false], [v.kapisiz, false], [v.mahalle, true]]) {
-          if (!q) continue;
-          const r = await osmAra(q + ekle(b), b.kutu);
-          if (r && (!b.kutu || kutuIcinde(r.lat, r.lon, b.kutu))) { if (!bulunan || !kaba) bulunan = { ...r, yaklasik: kaba }; break; }
-        }
-        if (bulunan && !bulunan.yaklasik) break;
-      }
-    }
     if (bulunan) { p.lat = bulunan.lat; p.lon = bulunan.lon; p.yaklasik = !!bulunan.yaklasik; p.bulunamadi = false; p.kaynak = bulunan.kaynak; }
-    else p.bulunamadi = true;
+    else { p.bulunamadi = true; }
     sirala(); kaydet(); ciz();
   });
   return kuyruk;
@@ -299,8 +312,8 @@ function yolLinki(p){
 function paketHTML(p, i, siradaki){
   const tip = p.durum === 'bekliyor' ? 'b' : p.durum === 'teslim' ? 't' : 'e';
   const tel = p.tel ? `<a class="ara" href="tel:${esc(p.tel)}">📞 ${esc(p.tel.replace(/^(\d{4})(\d{3})(\d{2})(\d{2})$/, '$1 $2 $3 $4'))}</a>` : '';
-  const isaretle = `<button class="btn" style="padding:7px;font-size:13px" data-isaretle="${p.id}">📍 Konumu haritada işaretle</button>`;
-  const yer = p.bulunamadi ? `<div class="uyari">❓ Haritada bulunamadı — sırada en sona kondu</div>${p.durum === 'bekliyor' ? isaretle : ''}`
+  const isaretle = `<button class="btn" style="padding:7px;font-size:13px" data-isaretle="${p.id}">📍 Konumu netleştir</button>`;
+  const yer = p.bulunamadi ? `<div class="kucuk">📍 Haritada tam yeri bulunamadı — sırası korunuyor, yol tarifi adresle çalışır.</div>${p.durum === 'bekliyor' ? isaretle : ''}`
             : p.yaklasik ? `<div class="kucuk">≈ Yaklaşık konum (mahalle)</div>${p.durum === 'bekliyor' ? isaretle : ''}` : '';
   if (siradaki) return `<div class="kart siradaki">
       <div class="etiket">SIRADAKİ · <span data-mes="${p.id}">${mesafeYaz(p.mesafe) || 'mesafe hesaplanıyor'}</span></div>
