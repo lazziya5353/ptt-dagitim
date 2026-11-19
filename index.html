@@ -185,7 +185,7 @@ function paketHTML(p, i, siradaki){
   const tel = p.tel ? `<a class="ara" href="tel:${esc(p.tel)}">📞 ${esc(p.tel.replace(/^(\d{4})(\d{3})(\d{2})(\d{2})$/, '$1 $2 $3 $4'))}</a>` : '';
   const yer = p.bulunamadi ? '<div class="uyari">❓ Haritada bulunamadı — sırada en sona kondu</div>' : p.yaklasik ? '<div class="kucuk">≈ Yaklaşık konum (mahalle)</div>' : '';
   if (siradaki) return `<div class="kart siradaki">
-      <div class="etiket">SIRADAKİ · ${mesafeYaz(p.mesafe) || 'mesafe hesaplanıyor'}</div>
+      <div class="etiket">SIRADAKİ · <span data-mes="${p.id}">${mesafeYaz(p.mesafe) || 'mesafe hesaplanıyor'}</span></div>
       ${p.isim ? `<div class="isim">${esc(p.isim)}</div>` : ''}<div class="adres">${esc(p.adres)}</div>${yer}${tel}
       <a class="btn mavi" href="${yolLinki(p)}" target="_blank" rel="noopener">🧭 Yol tarifi</a>
       <div class="ikili"><button class="btn yesil" data-teslim="${p.id}">✅ Teslim ettim</button><button class="btn kirmizi" data-edilemedi="${p.id}">❌ Edilemedi</button></div>
@@ -194,18 +194,18 @@ function paketHTML(p, i, siradaki){
       ${p.isim ? `<div style="font-weight:700">${esc(p.isim)}</div>` : ''}<div style="font-size:14px">${esc(p.adres)}</div>${yer}
       ${p.sebep ? `<div class="kucuk">Sebep: ${esc(p.sebep)}</div>` : ''}${p.zaman ? `<div class="kucuk">${new Date(p.zaman).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
       ${tel}
-      ${p.durum === 'bekliyor' ? `<div class="kucuk">${mesafeYaz(p.mesafe)}</div><div class="ikili"><a class="btn" style="padding:8px" href="${yolLinki(p)}" target="_blank" rel="noopener">🧭</a><button class="btn yesil" style="padding:8px" data-teslim="${p.id}">✅</button><button class="btn kirmizi" style="padding:8px" data-edilemedi="${p.id}">❌</button></div>` : ''}
+      ${p.durum === 'bekliyor' ? `<div class="kucuk" data-mes="${p.id}">${mesafeYaz(p.mesafe)}</div><div class="ikili"><a class="btn" style="padding:8px" href="${yolLinki(p)}" target="_blank" rel="noopener">🧭</a><button class="btn yesil" style="padding:8px" data-teslim="${p.id}">✅</button><button class="btn kirmizi" style="padding:8px" data-edilemedi="${p.id}">❌</button></div>` : ''}
       ${p.durum !== 'bekliyor' ? `<button class="btn" style="padding:8px;font-size:13px" data-geri="${p.id}">↩️ Bekleyenlere geri al</button>` : ''}
     </div><button data-sil="${p.id}" style="border:none;background:none;font-size:18px;color:#aaa" aria-label="Sil">🗑️</button></div>`;
 }
 
-let harita = null, katman = null;
+let harita = null, katman = null, benIsaret = null;
 function ciz(){
   const B = paketler.filter(p => p.durum === 'bekliyor'), T = paketler.filter(p => p.durum === 'teslim'), E = paketler.filter(p => p.durum === 'edilemedi');
   $('sB').textContent = B.length; $('sT').textContent = T.length; $('sE').textContent = E.length;
   document.querySelectorAll('.sekmeler button').forEach(b => b.classList.toggle('aktif', b.dataset.s === sekme));
   $('ekleBtn').style.display = sekme === 'harita' ? 'none' : '';
-  let h = afisHTML();
+  let h = yakinAfis() + afisHTML();
   if (sekme === 'bekleyen') {
     if (!B.length) h += `<div class="kart bos">Bekleyen paket yok.<br>Aşağıdaki <b>＋ Paket ekle</b> ile başla.</div>`;
     else {
@@ -221,7 +221,7 @@ function ciz(){
         <div class="kucuk" style="margin-top:6px">Telefonun takvimine hatırlatıcı ekler; ekran kapalıyken de bildirim gelir. Saati ⚙️ Ayarlar'dan değiştirebilirsin.</div></div>`
       : `<div class="kart bos">Teslim edilemeyen paket yok 👍</div>`;
   } else {
-    h += `<div id="harita"></div><div class="lejant"><span style="--r:#1a3a8f">Bekleyen (numara = sıra)</span><span style="--r:#1b7f3a">Teslim</span><span style="--r:#b3261e">Edilemedi</span><span style="--r:#2a7fff">Sen</span></div>`;
+    h += `<button class="btn" id="geriBtn" style="margin:0 0 10px">← Listeye dön</button><div id="harita"></div><div class="lejant"><span style="--r:#1a3a8f">Bekleyen (numara = sıra)</span><span style="--r:#1b7f3a">Teslim</span><span style="--r:#b3261e">Edilemedi</span><span style="--r:#2a7fff">Sen</span></div>`;
   }
   $('icerik').innerHTML = h;
   if (sekme === 'harita') haritaCiz(B, T, E); else if (harita) { harita.remove(); harita = null; }
@@ -242,10 +242,29 @@ function haritaCiz(B, T, E){
   T.forEach(p => pin(p, '#1b7f3a', '✓', 0));
   E.forEach(p => pin(p, '#b3261e', '✕', 100));
   B.forEach((p, i) => pin(p, '#1a3a8f', i + 1, 1000 - i));
-  if (konum) { L.marker([konum.lat, konum.lon], { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="ben"></div>', iconSize: [16, 16] }) }).addTo(harita).bindPopup('Buradasın'); sinir.push([konum.lat, konum.lon]); }
+  if (konum) { benIsaret = L.marker([konum.lat, konum.lon], { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="ben"></div>', iconSize: [16, 16] }) }).addTo(harita).bindPopup('Buradasın'); sinir.push([konum.lat, konum.lon]); }
   if (sinir.length) harita.fitBounds(sinir, { padding: [40, 40], maxZoom: 16 });
   setTimeout(() => harita && harita.invalidateSize(), 200);
 }
+
+// ---------- Canlı konum ----------
+let sonCanli = 0;
+if (navigator.geolocation) navigator.geolocation.watchPosition(pos => {
+  konum = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+  const simdi = Date.now(); if (simdi - sonCanli < 3000) return; sonCanli = simdi;
+  const B = paketler.filter(p => p.durum === 'bekliyor');
+  B.forEach(p => { p.mesafe = p.lat ? km(konum, p) : null; document.querySelectorAll(`[data-mes="${p.id}"]`).forEach(el => el.textContent = mesafeYaz(p.mesafe)); });
+  if (benIsaret) benIsaret.setLatLng([konum.lat, konum.lon]);
+  else if (harita && typeof L !== 'undefined') benIsaret = L.marker([konum.lat, konum.lon], { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="ben"></div>', iconSize: [16, 16] }) }).addTo(harita);
+  // Sıradakinden çok daha yakın bir adres var mı?
+  const ilk = B[0];
+  if (ilk && ilk.mesafe != null) {
+    const aday = B.slice(1).filter(p => p.mesafe != null).sort((a, b) => a.mesafe - b.mesafe)[0];
+    const onceki = yakinOneri && yakinOneri.id;
+    yakinOneri = (aday && aday.id !== reddedilen && aday.mesafe < ilk.mesafe * 0.5 && ilk.mesafe - aday.mesafe > 0.3) ? aday : null;
+    if ((yakinOneri && yakinOneri.id) !== onceki && sekme === 'bekleyen') ciz();
+  }
+}, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
 
 // ---------- Hatırlatıcı ----------
 function yarinSaat(){
@@ -274,6 +293,12 @@ function hatirlatKur(){
   ayar.hatirlatmaKuruldu = bugun(); kaydet();
 }
 // Uygulama içi uyarı: hatırlatma saati geçtiyse ve önceki günlerden kalan edilemeyen varsa
+let yakinOneri = null, reddedilen = null;
+function yakinAfis(){
+  if (!yakinOneri || sekme !== 'bekleyen') return '';
+  return `<div class="afis">📍 <b>Daha yakın bir adres var:</b> ${esc(yakinOneri.isim || yakinOneri.adres)} (${mesafeYaz(yakinOneri.mesafe)}). Sırayı güncelleyeyim mi?
+    <div class="ikili"><button class="btn mavi" id="yakinEvet">Evet, güncelle</button><button class="btn" id="yakinHayir">Hayır</button></div></div>`;
+}
 function afisHTML(){
   const [s, d] = (ayar.saat || '10:00').split(':').map(Number), simdi = new Date();
   const eski = paketler.filter(p => p.durum === 'edilemedi' && p.zaman && p.zaman.slice(0, 10) < bugun());
@@ -298,19 +323,41 @@ function bilgi(t){
   d.textContent = t; d.style.display = 'block'; clearTimeout(bilgiZaman); bilgiZaman = setTimeout(() => d.style.display = 'none', 4500);
 }
 
+// ---------- Geri tuşu / kaydırma ile geri gelme ----------
+function sekmeyeGit(s, gecmiseYazma){
+  if (s === sekme && !gecmiseYazma) return;
+  sekme = s; if (!gecmiseYazma) history.pushState({ sekme: s }, '');
+  if (s === 'harita') konumAl().then(() => sekme === 'harita' && ciz());
+  ciz(); window.scrollTo(0, 0);
+}
+function panelAc(id){ $(id).classList.add('acik'); history.pushState({ sekme, panel: id }, ''); }
+function panelKapat(){ const a = document.querySelector('.panel.acik'); if (a) { a.classList.remove('acik'); if (history.state && history.state.panel) history.back(); } }
+history.replaceState({ sekme: 'bekleyen' }, '');
+window.addEventListener('popstate', e => {
+  document.querySelectorAll('.panel.acik').forEach(p => p.classList.remove('acik'));
+  const st = e.state || { sekme: 'bekleyen' };
+  if (st.panel) { $(st.panel).classList.add('acik'); return; }
+  sekmeyeGit(st.sekme || 'bekleyen', true);
+});
+// Panelin dışına dokununca kapat
+document.querySelectorAll('.panel').forEach(p => p.addEventListener('click', e => { if (e.target === p) panelKapat(); }));
+
 // ---------- Tıklamalar ----------
 let sebepId = null;
 document.addEventListener('click', async e => {
   const t = e.target.closest('button,[data-s]'); if (!t) return;
   const bul = id => paketler.find(p => p.id === id);
-  if (t.dataset.s) { sekme = t.dataset.s; if (sekme === 'harita') await konumAl(); ciz(); window.scrollTo(0, 0); }
+  if (t.dataset.s) { sekmeyeGit(t.dataset.s); }
+  else if (t.id === 'geriBtn') { history.length > 1 && history.state && history.state.sekme !== 'bekleyen' ? history.back() : sekmeyeGit('bekleyen'); }
+  else if (t.id === 'yakinEvet') { yakinOneri = null; await yenidenSirala(); bilgi('Sıra güncellendi.'); }
+  else if (t.id === 'yakinHayir') { reddedilen = yakinOneri && yakinOneri.id; yakinOneri = null; ciz(); }
   else if (t.dataset.teslim) { const p = bul(t.dataset.teslim); p.durum = 'teslim'; p.zaman = new Date().toISOString(); p.sebep = ''; kaydet(); bilgi('✅ Teslim edildi. Sıradakine geçiliyor…'); await yenidenSirala(); }
-  else if (t.dataset.edilemedi) { sebepId = t.dataset.edilemedi; $('sebepPanel').classList.add('acik'); }
+  else if (t.dataset.edilemedi) { sebepId = t.dataset.edilemedi; panelAc('sebepPanel'); }
   else if (t.closest('#sebepPanel .sebepler')) {
     let sebep = t.textContent.replace(/^\S+\s/, '');
     if (sebep === 'Diğer') sebep = prompt('Sebep nedir?') || 'Diğer';
     const p = bul(sebepId); if (p) { p.durum = 'edilemedi'; p.sebep = sebep; p.zaman = new Date().toISOString(); }
-    $('sebepPanel').classList.remove('acik'); kaydet(); bilgi('❌ Edilemedi olarak işaretlendi. Sıradakine geçiliyor…'); await yenidenSirala();
+    panelKapat(); kaydet(); bilgi('❌ Edilemedi olarak işaretlendi. Sıradakine geçiliyor…'); await yenidenSirala();
   }
   else if (t.dataset.geri) { const p = bul(t.dataset.geri); p.durum = 'bekliyor'; p.sebep = ''; p.zaman = null; await yenidenSirala(); }
   else if (t.dataset.sil) { if (confirm('Bu paket silinsin mi?')) { paketler = paketler.filter(p => p.id !== t.dataset.sil); kaydet(); ciz(); } }
@@ -318,11 +365,11 @@ document.addEventListener('click', async e => {
   else if (t.id === 'hatirlatBtn') { try { window.Notification && Notification.permission === 'default' && Notification.requestPermission(); } catch {} hatirlatKur(); }
   else if (t.id === 'eskiGeri') { paketler.forEach(p => { if (p.durum === 'edilemedi' && p.zaman && p.zaman.slice(0, 10) < bugun()) { p.durum = 'bekliyor'; p.sebep = ''; p.zaman = null; } }); sekme = 'bekleyen'; await yenidenSirala(); }
   else if (t.id === 'afisKapat') { ayar.afisKapandi = bugun(); kaydet(); ciz(); }
-  else if (t.id === 'ekleBtn') { $('ekPanel').classList.add('acik'); }
-  else if (t.id === 'ayarBtn') { $('saatAyar').value = ayar.saat; $('haritaAyar').value = ayar.harita; $('ayarPanel').classList.add('acik'); }
+  else if (t.id === 'ekleBtn') { panelAc('ekPanel'); }
+  else if (t.id === 'ayarBtn') { $('saatAyar').value = ayar.saat; $('haritaAyar').value = ayar.harita; panelAc('ayarPanel'); }
   else if (t.id === 'yeniGun') { if (confirm('Teslim edilenler temizlensin mi?')) { paketler = paketler.filter(p => p.durum !== 'teslim'); kaydet(); ciz(); $('ayarPanel').classList.remove('acik'); } }
   else if (t.id === 'elleBtn') { adayEkle({ isim: '', adres: '', tel: '', teller: [] }); }
-  else if (t.classList.contains('kapat')) { t.closest('.panel').classList.remove('acik'); }
+  else if (t.classList.contains('kapat')) { panelKapat(); }
 });
 $('saatAyar').onchange = e => { ayar.saat = e.target.value || '10:00'; kaydet(); ciz(); bilgi('Hatırlatma saati: ' + ayar.saat); };
 $('haritaAyar').onchange = e => { ayar.harita = e.target.value; kaydet(); ciz(); };
