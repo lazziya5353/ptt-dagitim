@@ -61,10 +61,20 @@
   .bos{text-align:center;color:#888;padding:30px 10px}
   .uyari{color:#b3261e;font-size:13px;margin-top:4px}
   input[type=file]{display:none}
+  header span button{background:none;border:none;font-size:22px;padding:4px 6px}
+  .hizli{display:flex;gap:6px;overflow-x:auto}.hizli button{flex:none;padding:8px 12px;border:1px solid #1a3a8f;border-radius:20px;background:#fff;color:#1a3a8f;font-size:14px;font-weight:600}
+  .hizli button.sec{background:#1a3a8f;color:#fff}
+  .ozet{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+  .ozet div{background:#fff;border-radius:12px;padding:10px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+  .ozet b{display:block;font-size:24px}.ozet span{font-size:12px;color:#666}
+  .gun{padding:10px 0;border-top:1px solid #eee}.gun:first-child{border-top:none}
+  .gunUst{cursor:pointer;display:flex;justify-content:space-between;font-size:14px;font-weight:600}
+  .cubuk{display:flex;height:10px;border-radius:5px;overflow:hidden;background:#eee;margin-top:6px}
+  .gunDetay{display:none;margin-top:8px;font-size:13px}.gun.acik .gunDetay{display:block}
 </style>
 </head>
 <body>
-<header><h1 style="display:flex;align-items:center;gap:10px"><img src="logo.svg" alt="" width="34" height="34" style="border-radius:8px;box-shadow:0 0 0 2px #1a3a8f22">PTT Dağıtım</h1><button id="ayarBtn" aria-label="Ayarlar">⚙️</button></header>
+<header><h1 style="display:flex;align-items:center;gap:10px"><img src="logo.svg" alt="" width="34" height="34" style="border-radius:8px;box-shadow:0 0 0 2px #1a3a8f22">PTT Dağıtım</h1><span><button id="istBtn" aria-label="İstatistik">📊</button><button id="ayarBtn" aria-label="Ayarlar">⚙️</button></span></header>
 <nav class="sekmeler">
   <button data-s="bekleyen" class="aktif">Bekleyen <span class="say" id="sB">0</span></button>
   <button data-s="teslim">Teslim <span class="say" id="sT">0</span></button>
@@ -99,6 +109,22 @@
   </div>
 </div></div>
 
+<!-- İstatistik -->
+<div class="panel" id="istPanel"><div>
+  <h2>📊 Günlük istatistik <button class="kapat" style="border:none;background:none;font-size:22px">✕</button></h2>
+  <div class="kart">
+    <div class="hizli">
+      <button data-ar="bugun">Bugün</button><button data-ar="dun">Dün</button><button data-ar="hafta">Bu hafta</button><button data-ar="ay">Bu ay</button><button data-ar="30">Son 30 gün</button>
+    </div>
+    <div class="ikili" style="margin-top:8px">
+      <div><label class="alan">Başlangıç</label><input type="date" id="istBas"></div>
+      <div><label class="alan">Bitiş</label><input type="date" id="istBit"></div>
+    </div>
+  </div>
+  <div id="istSonuc"></div>
+  <div class="kucuk" style="padding:4px">Bu kayıtlar "Teslim edilenleri temizle" ve "Her şeyi sıfırla" ile silinmez.</div>
+</div></div>
+
 <!-- Ayarlar -->
 <div class="panel" id="ayarPanel"><div>
   <h2>Ayarlar <button class="kapat" style="border:none;background:none;font-size:22px">✕</button></h2>
@@ -128,11 +154,15 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 // ---------- Veri ----------
-let paketler = [], ayar = { saat: '10:00', harita: IOS ? 'apple' : 'google' }, konum = null, sekme = 'bekleyen';
+let gecmis = [], paketler = [], ayar = { saat: '10:00', harita: IOS ? 'apple' : 'google' }, konum = null, sekme = 'bekleyen';
 try { paketler = JSON.parse(localStorage.getItem('ptt_paketler') || '[]'); } catch {}
+try { gecmis = JSON.parse(localStorage.getItem('ptt_gecmis') || '[]'); } catch {}
 try { Object.assign(ayar, JSON.parse(localStorage.getItem('ptt_ayar') || '{}')); } catch {}
-const kaydet = () => { try { localStorage.setItem('ptt_paketler', JSON.stringify(paketler)); localStorage.setItem('ptt_ayar', JSON.stringify(ayar)); } catch {} };
-const bugun = () => new Date().toISOString().slice(0, 10);
+const kaydet = () => { try { localStorage.setItem('ptt_paketler', JSON.stringify(paketler)); localStorage.setItem('ptt_ayar', JSON.stringify(ayar)); localStorage.setItem('ptt_gecmis', JSON.stringify(gecmis)); } catch {} };
+const yerelTarih = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+const bugun = () => yerelTarih(new Date());
+function kayitEkle(p){ gecmis = gecmis.filter(k => k.id !== p.id || k.tarih !== yerelTarih(p.zaman)); gecmis.push({ id: p.id, tarih: yerelTarih(p.zaman), zaman: p.zaman, durum: p.durum, isim: p.isim || '', adres: p.adres, sebep: p.sebep || '' }); }
+function kayitSil(p){ if (p.zaman) gecmis = gecmis.filter(k => !(k.id === p.id && k.tarih === yerelTarih(p.zaman))); }
 
 // ---------- Konum + mesafe ----------
 function km(a, b){
@@ -332,6 +362,39 @@ function bilgi(t){
   d.textContent = t; d.style.display = 'block'; clearTimeout(bilgiZaman); bilgiZaman = setTimeout(() => d.style.display = 'none', 4500);
 }
 
+// ---------- İstatistik ----------
+function aralikSec(tip){
+  const b = new Date(), s = new Date();
+  if (tip === 'dun') { b.setDate(b.getDate() - 1); s.setDate(s.getDate() - 1); }
+  else if (tip === 'hafta') { b.setDate(b.getDate() - ((b.getDay() + 6) % 7)); }
+  else if (tip === 'ay') { b.setDate(1); }
+  else if (tip === '30') { b.setDate(b.getDate() - 29); }
+  $('istBas').value = yerelTarih(b); $('istBit').value = yerelTarih(s);
+  document.querySelectorAll('.hizli button').forEach(x => x.classList.toggle('sec', x.dataset.ar === tip));
+  istCiz();
+}
+function istCiz(){
+  let bas = $('istBas').value, bit = $('istBit').value;
+  if (!bas || !bit) return; if (bas > bit) [bas, bit] = [bit, bas];
+  const k = gecmis.filter(x => x.tarih >= bas && x.tarih <= bit);
+  const gunler = {};
+  k.forEach(x => (gunler[x.tarih] = gunler[x.tarih] || []).push(x));
+  const T = k.filter(x => x.durum === 'teslim').length, E = k.length - T;
+  const gunSay = Object.keys(gunler).length;
+  let h = `<div class="ozet"><div><b style="color:#1b7f3a">${T}</b><span>Teslim</span></div><div><b style="color:#b3261e">${E}</b><span>Edilemedi</span></div><div><b>${gunSay ? (T / gunSay).toLocaleString('tr-TR', { maximumFractionDigits: 1 }) : 0}</b><span>Günlük ort. teslim</span></div></div>`;
+  if (!k.length) { $('istSonuc').innerHTML = h + '<div class="kart bos">Bu tarih aralığında kayıt yok.</div>'; return; }
+  const maks = Math.max(...Object.values(gunler).map(g => g.length));
+  h += '<div class="kart"><div class="etiket">GÜN GÜN (dokun → detay)</div>' + Object.keys(gunler).sort().reverse().map(g => {
+    const l = gunler[g], t = l.filter(x => x.durum === 'teslim').length, e = l.length - t;
+    const ad = new Date(g + 'T12:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'short' });
+    return `<div class="gun"><div class="gunUst"><span>${ad}</span><span><span style="color:#1b7f3a">✅ ${t}</span> · <span style="color:#b3261e">❌ ${e}</span> · ${l.length}</span></div>
+      <div class="cubuk" style="width:${Math.max(8, l.length / maks * 100)}%"><div style="flex:${t};background:#1b7f3a"></div><div style="flex:${e};background:#b3261e"></div></div>
+      <div class="gunDetay">${l.sort((a, b) => (a.zaman || '').localeCompare(b.zaman || '')).map(x => `<div style="padding:4px 0">${x.durum === 'teslim' ? '✅' : '❌'} <b>${new Date(x.zaman).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</b> ${esc(x.isim ? x.isim + ' – ' : '')}${esc(x.adres)}${x.sebep ? ` <span class="kucuk">(${esc(x.sebep)})</span>` : ''}</div>`).join('')}</div></div>`;
+  }).join('') + '</div>';
+  $('istSonuc').innerHTML = h;
+}
+$('istBas').onchange = $('istBit').onchange = () => { document.querySelectorAll('.hizli button').forEach(x => x.classList.remove('sec')); istCiz(); };
+
 // ---------- Geri tuşu / kaydırma ile geri gelme ----------
 function sekmeyeGit(s, gecmiseYazma){
   if (s === sekme && !gecmiseYazma) return;
@@ -354,21 +417,21 @@ document.querySelectorAll('.panel').forEach(p => p.addEventListener('click', e =
 // ---------- Tıklamalar ----------
 let sebepId = null;
 document.addEventListener('click', async e => {
-  const t = e.target.closest('button,[data-s]'); if (!t) return;
+  const t = e.target.closest('button,[data-s],.gunUst'); if (!t) return;
   const bul = id => paketler.find(p => p.id === id);
   if (t.dataset.s) { sekmeyeGit(t.dataset.s); }
   else if (t.id === 'geriBtn') { history.length > 1 && history.state && history.state.sekme !== 'bekleyen' ? history.back() : sekmeyeGit('bekleyen'); }
   else if (t.id === 'yakinEvet') { yakinOneri = null; await yenidenSirala(); bilgi('Sıra güncellendi.'); }
   else if (t.id === 'yakinHayir') { reddedilen = yakinOneri && yakinOneri.id; yakinOneri = null; ciz(); }
-  else if (t.dataset.teslim) { const p = bul(t.dataset.teslim); p.durum = 'teslim'; p.zaman = new Date().toISOString(); p.sebep = ''; kaydet(); bilgi('✅ Teslim edildi. Sıradakine geçiliyor…'); await yenidenSirala(); }
+  else if (t.dataset.teslim) { const p = bul(t.dataset.teslim); if (p.durum !== 'bekliyor') kayitSil(p); p.durum = 'teslim'; p.zaman = new Date().toISOString(); p.sebep = ''; kayitEkle(p); kaydet(); bilgi('✅ Teslim edildi. Sıradakine geçiliyor…'); await yenidenSirala(); }
   else if (t.dataset.edilemedi) { sebepId = t.dataset.edilemedi; panelAc('sebepPanel'); }
   else if (t.closest('#sebepPanel .sebepler')) {
     let sebep = t.textContent.replace(/^\S+\s/, '');
     if (sebep === 'Diğer') sebep = prompt('Sebep nedir?') || 'Diğer';
-    const p = bul(sebepId); if (p) { p.durum = 'edilemedi'; p.sebep = sebep; p.zaman = new Date().toISOString(); }
+    const p = bul(sebepId); if (p) { p.durum = 'edilemedi'; p.sebep = sebep; p.zaman = new Date().toISOString(); kayitEkle(p); }
     panelKapat(); kaydet(); bilgi('❌ Edilemedi olarak işaretlendi. Sıradakine geçiliyor…'); await yenidenSirala();
   }
-  else if (t.dataset.geri) { const p = bul(t.dataset.geri); p.durum = 'bekliyor'; p.sebep = ''; p.zaman = null; await yenidenSirala(); }
+  else if (t.dataset.geri) { const p = bul(t.dataset.geri); kayitSil(p); p.durum = 'bekliyor'; p.sebep = ''; p.zaman = null; await yenidenSirala(); }
   else if (t.dataset.sil) { if (confirm('Bu paket silinsin mi?')) { paketler = paketler.filter(p => p.id !== t.dataset.sil); kaydet(); ciz(); } }
   else if (t.id === 'siralaBtn') { bilgi('📍 Konum alınıyor…'); await yenidenSirala(); bilgi('Sıralandı.'); }
   else if (t.id === 'hatirlatBtn') { try { window.Notification && Notification.permission === 'default' && Notification.requestPermission(); } catch {} hatirlatKur(); }
@@ -377,6 +440,9 @@ document.addEventListener('click', async e => {
   else if (t.id === 'ekleBtn') { panelAc('ekPanel'); }
   else if (t.id === 'ayarBtn') { $('saatAyar').value = ayar.saat; $('haritaAyar').value = ayar.harita; panelAc('ayarPanel'); }
   else if (t.id === 'yeniGun') { if (confirm('Teslim edilenler temizlensin mi?')) { paketler = paketler.filter(p => p.durum !== 'teslim'); kaydet(); ciz(); $('ayarPanel').classList.remove('acik'); } }
+  else if (t.id === 'istBtn') { if (!$('istBas').value) aralikSec('hafta'); else istCiz(); panelAc('istPanel'); }
+  else if (t.dataset.ar) { aralikSec(t.dataset.ar); }
+  else if (t.closest('.gunUst')) { t.closest('.gun').classList.toggle('acik'); }
   else if (t.id === 'sifirla') {
     if (!paketler.length) { bilgi('Liste zaten boş.'); return; }
     if (confirm(`Tüm paketler (${paketler.length} adet) silinecek. Emin misin?`) && confirm('Bu geri alınamaz. Son kez soruyorum: sıfırlansın mı?')) {
@@ -568,6 +634,7 @@ $('kamera').addEventListener('change', oku);
 $('galeri').addEventListener('change', oku);
 
 // Başlangıç
+paketler.forEach(p => { if (p.durum !== 'bekliyor' && p.zaman && !gecmis.some(k => k.id === p.id)) kayitEkle(p); }); kaydet();
 paketler.filter(p => p.durum === 'bekliyor' && !p.lat && !p.bulunamadi).forEach(koordinatBul);
 ciz(); yenidenSirala();
 }
