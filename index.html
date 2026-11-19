@@ -2,103 +2,346 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Adres Okuma Testi</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffcc00">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>PTT Dağıtım</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <style>
-  *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f4f4f4;color:#222}
-  header{background:#ffcc00;padding:16px;text-align:center;font-weight:700;font-size:18px}
-  main{max-width:520px;margin:auto;padding:16px}
-  .card{background:#fff;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-  .ikili{display:flex;gap:8px}
-  label.btn{flex:1;display:block;text-align:center;background:#1a3a8f;color:#fff;padding:14px 8px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
-  label.btn.acik{background:#fff;color:#1a3a8f;border:2px solid #1a3a8f}
-  input[type=file]{display:none}
-  img{max-width:100%;border-radius:8px;margin-top:12px;display:none}
-  .bar{height:10px;background:#eee;border-radius:5px;overflow:hidden;margin-top:10px;display:none}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f2f3f5;color:#1d1d1f;padding-bottom:90px}
+  header{background:#ffcc00;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1000}
+  header h1{margin:0;font-size:19px}
+  header button{background:none;border:none;font-size:22px;padding:4px 8px}
+  .sekmeler{display:flex;background:#fff;position:sticky;top:calc(env(safe-area-inset-top) + 54px);z-index:999;border-bottom:1px solid #e3e3e3}
+  .sekmeler button{flex:1;border:none;background:none;padding:12px 2px;font-size:13px;font-weight:600;color:#777;border-bottom:3px solid transparent}
+  .sekmeler button.aktif{color:#1a3a8f;border-bottom-color:#1a3a8f}
+  .sekmeler .say{display:inline-block;min-width:20px;padding:1px 6px;border-radius:10px;background:#eee;font-size:11px;margin-left:2px}
+  main{max-width:560px;margin:auto;padding:12px}
+  .kart{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+  .siradaki{border:2px solid #1a3a8f}
+  .etiket{font-size:12px;font-weight:700;color:#1a3a8f;margin-bottom:4px}
+  .isim{font-size:17px;font-weight:700}
+  .adres{font-size:15px;margin:4px 0 8px;line-height:1.4}
+  .mesafe{font-size:13px;color:#666}
+  .btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:13px;border-radius:10px;border:1px solid #1a3a8f;background:#fff;color:#1a3a8f;font-size:15px;font-weight:600;margin-top:8px;text-decoration:none}
+  .btn.mavi{background:#1a3a8f;color:#fff}
+  .btn.yesil{background:#1b7f3a;color:#fff;border-color:#1b7f3a}
+  .btn.kirmizi{background:#fff;color:#b3261e;border-color:#b3261e}
+  .ikili{display:flex;gap:8px}.ikili>*{flex:1}
+  .satir{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #eee}
+  .no{flex:none;width:28px;height:28px;border-radius:50%;color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .no.b{background:#1a3a8f}.no.t{background:#1b7f3a}.no.e{background:#b3261e}
+  .kucuk{font-size:13px;color:#666}
+  .ara{display:inline-block;margin-top:4px;padding:6px 10px;border-radius:8px;background:#e8f5ec;color:#1b7f3a;font-weight:600;text-decoration:none;font-size:14px}
+  input,textarea,select{width:100%;font-size:16px;padding:10px;border:1px solid #ccc;border-radius:8px;font-family:inherit;background:#fff}
+  textarea{min-height:60px}
+  label.alan{display:block;font-size:12px;font-weight:600;color:#555;margin:8px 0 3px}
+  #harita{height:62vh;border-radius:14px;overflow:hidden}
+  .lejant{display:flex;gap:14px;font-size:13px;margin:8px 2px;flex-wrap:wrap}
+  .lejant span::before{content:"";display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;vertical-align:-1px;background:var(--r)}
+  .pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .pin b{transform:rotate(45deg);color:#fff;font-size:12px}
+  .ben{width:16px;height:16px;border-radius:50%;background:#2a7fff;border:3px solid #fff;box-shadow:0 0 0 2px #2a7fff55}
+  .afis{background:#fff4ce;border:1px solid #f0c000;border-radius:12px;padding:12px;margin-bottom:12px;font-size:14px}
+  .fab{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 16px);z-index:1001;background:#1a3a8f;color:#fff;border:none;border-radius:30px;padding:15px 20px;font-size:16px;font-weight:700;box-shadow:0 3px 10px rgba(0,0,0,.25)}
+  .panel{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:2000;display:none;align-items:flex-end}
+  .panel.acik{display:flex}
+  .panel>div{background:#f2f3f5;width:100%;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom) + 16px)}
+  .panel h2{margin:0 0 10px;font-size:18px;display:flex;justify-content:space-between}
+  .bar{height:8px;background:#e3e3e3;border-radius:4px;overflow:hidden;margin-top:10px;display:none}
   .bar div{height:100%;width:0;background:#1a3a8f;transition:width .2s}
-  #durum{margin-top:8px;font-size:14px;color:#555}
-  h3{margin:0 0 8px;font-size:15px}
-  textarea{width:100%;min-height:70px;font-size:15px;padding:10px;border:1px solid #ccc;border-radius:8px;font-family:inherit}
-  #ham{min-height:160px;font-size:13px;color:#444}
-  .ok{color:#1b7f3a}.no{color:#b3261e}
-  button{width:100%;padding:12px;margin-top:8px;border:1px solid #1a3a8f;background:#fff;color:#1a3a8f;border-radius:8px;font-size:15px}
-  button.ana{background:#1b7f3a;color:#fff;border:none;font-weight:600}
-  .aday{border:1px solid #ddd;border-radius:8px;padding:8px;margin-bottom:8px}
-  .aday textarea{min-height:50px}
-  .satir{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee;font-size:14px}
-  .satir .no-k{background:#1a3a8f;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none}
-  .mes{color:#555;white-space:nowrap;font-size:13px}
-  .sil{width:auto;padding:4px 10px;margin:0;border-color:#b3261e;color:#b3261e}
+  .sebepler button{display:block;width:100%;text-align:left;padding:14px;margin-bottom:8px;border:1px solid #ddd;border-radius:10px;background:#fff;font-size:16px}
+  .bos{text-align:center;color:#888;padding:30px 10px}
+  .uyari{color:#b3261e;font-size:13px;margin-top:4px}
+  input[type=file]{display:none}
 </style>
 </head>
 <body>
-<header>📦 Adres Okuma Testi</header>
-<main>
-  <div class="card">
-    <div class="ikili">
-      <label class="btn" for="kamera">📷 Fotoğraf çek</label>
-      <label class="btn acik" for="galeri">🖼️ Ekran görüntüsü / galeri</label>
-    </div>
-    <input type="file" id="kamera" accept="image/*" capture="environment">
-    <input type="file" id="galeri" accept="image/*">
-    <img id="onizleme" alt="">
-    <div class="bar" id="bar"><div id="dolum"></div></div>
-    <div id="durum">Etiket, kağıt liste, terminal ekranı — yazı olan her şeyi okur.</div>
-  </div>
+<header><h1>📦 PTT Dağıtım</h1><button id="ayarBtn" aria-label="Ayarlar">⚙️</button></header>
+<nav class="sekmeler">
+  <button data-s="bekleyen" class="aktif">Bekleyen <span class="say" id="sB">0</span></button>
+  <button data-s="teslim">Teslim <span class="say" id="sT">0</span></button>
+  <button data-s="edilemedi">Edilemedi <span class="say" id="sE">0</span></button>
+  <button data-s="harita">🗺️ Harita</button>
+</nav>
+<main id="icerik"></main>
+<button class="fab" id="ekleBtn">＋ Paket ekle</button>
 
-  <div class="card">
-    <h3>🏠 Bulunan adresler</h3>
-    <div id="adaylar"><div style="font-size:13px;color:#777">Fotoğraftan sonra burada görünecek. Düzeltip listeye ekleyebilirsin.</div></div>
+<!-- Paket ekleme -->
+<div class="panel" id="ekPanel"><div>
+  <h2>Paket ekle <button class="kapat" style="border:none;background:none;font-size:22px">✕</button></h2>
+  <div class="ikili">
+    <label class="btn mavi" for="kamera">📷 Fotoğraf çek</label>
+    <label class="btn" for="galeri">🖼️ Galeri</label>
   </div>
+  <input type="file" id="kamera" accept="image/*" capture="environment">
+  <input type="file" id="galeri" accept="image/*">
+  <div class="bar" id="bar"><div id="dolum"></div></div>
+  <div id="durum" class="kucuk" style="margin-top:8px">Etiket, fatura veya kağıdın fotoğrafını çek.</div>
+  <div id="adaylar" style="margin-top:10px"></div>
+  <button class="btn" id="elleBtn">✍️ Elle yaz</button>
+</div></div>
 
-  <div class="card">
-    <h3>📋 Teslimat listesi (<span id="sayi">0</span>)</h3>
-    <div id="liste"></div>
-    <button class="ana" id="sirala">📍 Konumuma göre sırala (en yakından en uzağa)</button>
-    <div id="siraDurum" style="font-size:13px;margin-top:6px;color:#555"></div>
+<!-- Edilemedi sebebi -->
+<div class="panel" id="sebepPanel"><div>
+  <h2>Neden teslim edilemedi? <button class="kapat" style="border:none;background:none;font-size:22px">✕</button></h2>
+  <div class="sebepler">
+    <button>🏠 Evde yok</button><button>📍 Adres yanlış / bulunamadı</button>
+    <button>🏢 İş yeri kapalı</button><button>🙅 Alıcı reddetti</button>
+    <button>📞 Ulaşılamadı</button><button>📝 Diğer</button>
   </div>
+</div></div>
 
-  <div class="card">
-    <h3>📝 Okunan tüm yazı</h3>
-    <textarea id="ham" readonly></textarea>
-    <button id="kopyala">Sonucu kopyala (bana gönder)</button>
+<!-- Ayarlar -->
+<div class="panel" id="ayarPanel"><div>
+  <h2>Ayarlar <button class="kapat" style="border:none;background:none;font-size:22px">✕</button></h2>
+  <div class="kart">
+    <label class="alan">⏰ Teslim edilemeyenler için hatırlatma saati</label>
+    <input type="time" id="saatAyar">
+    <label class="alan">🧭 Yol tarifi uygulaması</label>
+    <select id="haritaAyar"><option value="google">Google Haritalar</option><option value="apple">Apple Haritalar</option></select>
   </div>
-</main>
+  <div class="kart">
+    <div class="isim" style="font-size:15px">Yeni gün</div>
+    <div class="kucuk">Teslim edilenleri listeden temizler. Bekleyen ve edilemeyenler kalır.</div>
+    <button class="btn kirmizi" id="yeniGun">🧹 Teslim edilenleri temizle</button>
+  </div>
+  <div class="kucuk" style="padding:4px">Bilgiler sadece bu telefonda saklanır. Haritada bulmak için yalnızca adres metni OpenStreetMap'e gönderilir; isim ve telefon gönderilmez.</div>
+</div></div>
 
 <script>
+{
 const $ = id => document.getElementById(id);
-const hataMetni = e => (e && (e.message || e.toString())) || String(e);
-let worker = null;
-let liste = [];
-try { liste = JSON.parse(localStorage.getItem('test_liste') || '[]'); } catch {}
-const kaydet = () => { try { localStorage.setItem('test_liste', JSON.stringify(liste)); } catch {} };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+// ---------- Veri ----------
+let paketler = [], ayar = { saat: '10:00', harita: IOS ? 'apple' : 'google' }, konum = null, sekme = 'bekleyen';
+try { paketler = JSON.parse(localStorage.getItem('ptt_paketler') || '[]'); } catch {}
+try { Object.assign(ayar, JSON.parse(localStorage.getItem('ptt_ayar') || '{}')); } catch {}
+const kaydet = () => { try { localStorage.setItem('ptt_paketler', JSON.stringify(paketler)); localStorage.setItem('ptt_ayar', JSON.stringify(ayar)); } catch {} };
+const bugun = () => new Date().toISOString().slice(0, 10);
+
+// ---------- Konum + mesafe ----------
+function km(a, b){
+  const R = 6371, r = x => x * Math.PI / 180, dLat = r(b.lat - a.lat), dLon = r(b.lon - a.lon);
+  const h = Math.sin(dLat/2)**2 + Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const mesafeYaz = d => d == null ? '' : d < 1 ? Math.round(d * 1000) + ' m' : d.toFixed(1) + ' km';
+function konumAl(){
+  return new Promise(res => {
+    if (!navigator.geolocation) return res(konum);
+    navigator.geolocation.getCurrentPosition(p => { konum = { lat: p.coords.latitude, lon: p.coords.longitude }; res(konum); },
+      () => res(konum), { enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 });
+  });
+}
+function sirala(){
+  const b = paketler.filter(p => p.durum === 'bekliyor');
+  b.forEach(p => p.mesafe = (konum && p.lat) ? km(konum, p) : null);
+  b.sort((x, y) => (x.mesafe ?? 1e9) - (y.mesafe ?? 1e9));
+  const diger = paketler.filter(p => p.durum !== 'bekliyor');
+  paketler = [...b, ...diger];
+}
+async function yenidenSirala(){ await konumAl(); sirala(); kaydet(); ciz(); }
+
+// ---------- Haritada bulma (varsayılan Bornova) ----------
+const BASKA_YER = /\b(karşıyaka|karsiyaka|bayraklı|bayrakli|konak|buca|çiğli|cigli|gaziemir|karabağlar|karabaglar|narlıdere|balçova|kemalpaşa|kemalpasa|menemen|torbalı|torbali|urla|çeşme|cesme|seferihisar|menderes|aliağa|foça|tire|ödemiş|bergama|dikili|kepez|muratpaşa|konyaaltı|antalya|istanbul|ankara|bursa|manisa|aydın|denizli|muğla)\b/i;
+const bekle = ms => new Promise(r => setTimeout(r, ms));
+let kuyruk = Promise.resolve();
+function koordinatBul(p){
+  kuyruk = kuyruk.then(async () => {
+    const adres = p.adres;
+    const temiz = adres.replace(/\b(bornova|izmir|İzmir|türkiye|turkiye)\b/gi, '').replace(/\b35\d{3}\b/, '').replace(/[\/]/g, ' ').trim();
+    const baska = !/bornova/i.test(adres) && BASKA_YER.test(adres);
+    const den = baska ? [adres + ', Türkiye'] : [temiz + ', Bornova, İzmir'];
+    const mah = adres.match(/([A-Za-zÇĞİÖŞÜçğıöşü0-9 .]+?)\s*(mah\b|mah\.|mahallesi|mh\.?)/i);
+    if (mah) den.push(mah[1].trim() + ' Mahallesi, ' + (baska ? adres.match(BASKA_YER)[1] : 'Bornova, İzmir'));
+    p.bulunamadi = true;
+    for (const q of den) {
+      try {
+        const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tr' + (baska ? '' : '&viewbox=27.15,38.52,27.35,38.40') + '&q=' + encodeURIComponent(q), { headers: { 'Accept-Language': 'tr' } });
+        const j = await r.json(); await bekle(1100);
+        if (j[0]) { p.lat = +j[0].lat; p.lon = +j[0].lon; p.bulunamadi = false; p.yaklasik = q !== den[0]; break; }
+      } catch { await bekle(1100); }
+    }
+    sirala(); kaydet(); ciz();
+  });
+  return kuyruk;
+}
+
+// ---------- Yol tarifi ----------
+function yolLinki(p){
+  const hedef = p.lat ? `${p.lat},${p.lon}` : encodeURIComponent(p.adres);
+  return ayar.harita === 'apple' ? `https://maps.apple.com/?daddr=${hedef}&dirflg=d` : `https://www.google.com/maps/dir/?api=1&destination=${hedef}&travelmode=driving`;
+}
+
+// ---------- Ekran ----------
+function paketHTML(p, i, siradaki){
+  const tip = p.durum === 'bekliyor' ? 'b' : p.durum === 'teslim' ? 't' : 'e';
+  const tel = p.tel ? `<a class="ara" href="tel:${esc(p.tel)}">📞 ${esc(p.tel.replace(/^(\d{4})(\d{3})(\d{2})(\d{2})$/, '$1 $2 $3 $4'))}</a>` : '';
+  const yer = p.bulunamadi ? '<div class="uyari">❓ Haritada bulunamadı — sırada en sona kondu</div>' : p.yaklasik ? '<div class="kucuk">≈ Yaklaşık konum (mahalle)</div>' : '';
+  if (siradaki) return `<div class="kart siradaki">
+      <div class="etiket">SIRADAKİ · ${mesafeYaz(p.mesafe) || 'mesafe hesaplanıyor'}</div>
+      ${p.isim ? `<div class="isim">${esc(p.isim)}</div>` : ''}<div class="adres">${esc(p.adres)}</div>${yer}${tel}
+      <a class="btn mavi" href="${yolLinki(p)}" target="_blank" rel="noopener">🧭 Yol tarifi</a>
+      <div class="ikili"><button class="btn yesil" data-teslim="${p.id}">✅ Teslim ettim</button><button class="btn kirmizi" data-edilemedi="${p.id}">❌ Edilemedi</button></div>
+    </div>`;
+  return `<div class="satir"><div class="no ${tip}">${i}</div><div style="flex:1;min-width:0">
+      ${p.isim ? `<div style="font-weight:700">${esc(p.isim)}</div>` : ''}<div style="font-size:14px">${esc(p.adres)}</div>${yer}
+      ${p.sebep ? `<div class="kucuk">Sebep: ${esc(p.sebep)}</div>` : ''}${p.zaman ? `<div class="kucuk">${new Date(p.zaman).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+      ${tel}
+      ${p.durum === 'bekliyor' ? `<div class="kucuk">${mesafeYaz(p.mesafe)}</div><div class="ikili"><a class="btn" style="padding:8px" href="${yolLinki(p)}" target="_blank" rel="noopener">🧭</a><button class="btn yesil" style="padding:8px" data-teslim="${p.id}">✅</button><button class="btn kirmizi" style="padding:8px" data-edilemedi="${p.id}">❌</button></div>` : ''}
+      ${p.durum !== 'bekliyor' ? `<button class="btn" style="padding:8px;font-size:13px" data-geri="${p.id}">↩️ Bekleyenlere geri al</button>` : ''}
+    </div><button data-sil="${p.id}" style="border:none;background:none;font-size:18px;color:#aaa" aria-label="Sil">🗑️</button></div>`;
+}
+
+let harita = null, katman = null;
+function ciz(){
+  const B = paketler.filter(p => p.durum === 'bekliyor'), T = paketler.filter(p => p.durum === 'teslim'), E = paketler.filter(p => p.durum === 'edilemedi');
+  $('sB').textContent = B.length; $('sT').textContent = T.length; $('sE').textContent = E.length;
+  document.querySelectorAll('.sekmeler button').forEach(b => b.classList.toggle('aktif', b.dataset.s === sekme));
+  $('ekleBtn').style.display = sekme === 'harita' ? 'none' : '';
+  let h = afisHTML();
+  if (sekme === 'bekleyen') {
+    if (!B.length) h += `<div class="kart bos">Bekleyen paket yok.<br>Aşağıdaki <b>＋ Paket ekle</b> ile başla.</div>`;
+    else {
+      h += paketHTML(B[0], 1, true);
+      if (B.length > 1) h += `<div class="kart"><div class="etiket">SONRAKİLER</div>${B.slice(1).map((p, i) => paketHTML(p, i + 2)).join('')}</div>`;
+      h += `<button class="btn" id="siralaBtn">📍 Konumuma göre yeniden sırala</button>`;
+    }
+  } else if (sekme === 'teslim') {
+    h += T.length ? `<div class="kart"><div class="etiket">TESLİM EDİLENLER (${T.length})</div>${T.map((p, i) => paketHTML(p, i + 1)).join('')}</div>` : `<div class="kart bos">Henüz teslim edilen yok.</div>`;
+  } else if (sekme === 'edilemedi') {
+    h += E.length ? `<div class="kart"><div class="etiket">TESLİM EDİLEMEYENLER (${E.length})</div>${E.map((p, i) => paketHTML(p, i + 1)).join('')}
+        <button class="btn mavi" id="hatirlatBtn">⏰ Yarın ${ayar.saat}'da hatırlat</button>
+        <div class="kucuk" style="margin-top:6px">Telefonun takvimine hatırlatıcı ekler; ekran kapalıyken de bildirim gelir. Saati ⚙️ Ayarlar'dan değiştirebilirsin.</div></div>`
+      : `<div class="kart bos">Teslim edilemeyen paket yok 👍</div>`;
+  } else {
+    h += `<div id="harita"></div><div class="lejant"><span style="--r:#1a3a8f">Bekleyen (numara = sıra)</span><span style="--r:#1b7f3a">Teslim</span><span style="--r:#b3261e">Edilemedi</span><span style="--r:#2a7fff">Sen</span></div>`;
+  }
+  $('icerik').innerHTML = h;
+  if (sekme === 'harita') haritaCiz(B, T, E); else if (harita) { harita.remove(); harita = null; }
+}
+
+function haritaCiz(B, T, E){
+  if (harita) harita.remove();
+  if (typeof L === 'undefined') { $('harita').innerHTML = '<div class="bos">Harita yüklenemedi. İnterneti kontrol edip sayfayı yenile.</div>'; return; }
+  harita = L.map('harita').setView([38.462, 27.22], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(harita);
+  const sinir = [];
+  const pin = (p, renk, yazi, z) => {
+    if (!p.lat) return;
+    const m = L.marker([p.lat, p.lon], { zIndexOffset: z, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:${renk}"><b>${yazi}</b></div>`, iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28] }) }).addTo(harita);
+    m.bindPopup(`<b>${yazi !== '✓' && yazi !== '✕' ? yazi + '. ' : ''}${esc(p.isim || 'İsimsiz')}</b><br>${esc(p.adres)}${p.tel ? `<br><a href="tel:${esc(p.tel)}">📞 ${esc(p.tel)}</a>` : ''}${p.durum === 'bekliyor' ? `<br><a href="${yolLinki(p)}" target="_blank" rel="noopener">🧭 Yol tarifi</a>` : ''}`);
+    sinir.push([p.lat, p.lon]);
+  };
+  T.forEach(p => pin(p, '#1b7f3a', '✓', 0));
+  E.forEach(p => pin(p, '#b3261e', '✕', 100));
+  B.forEach((p, i) => pin(p, '#1a3a8f', i + 1, 1000 - i));
+  if (konum) { L.marker([konum.lat, konum.lon], { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="ben"></div>', iconSize: [16, 16] }) }).addTo(harita).bindPopup('Buradasın'); sinir.push([konum.lat, konum.lon]); }
+  if (sinir.length) harita.fitBounds(sinir, { padding: [40, 40], maxZoom: 16 });
+  setTimeout(() => harita && harita.invalidateSize(), 200);
+}
+
+// ---------- Hatırlatıcı ----------
+function yarinSaat(){
+  const [s, d] = (ayar.saat || '10:00').split(':').map(Number);
+  const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(s, d, 0, 0); return t;
+}
+function hatirlatKur(){
+  const E = paketler.filter(p => p.durum === 'edilemedi');
+  const bas = yarinSaat(), bit = new Date(bas.getTime() + 30 * 60000);
+  const baslik = `📦 ${E.length} paket teslim edilemedi — tekrar dene`;
+  const aciklama = E.map((p, i) => `${i + 1}. ${p.isim ? p.isim + ' – ' : ''}${p.adres}${p.sebep ? ' (' + p.sebep + ')' : ''}`).join('\n') + '\n\nUygulama: ' + location.href;
+  const f = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  if (IOS) {
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PTT Dagitim//TR', 'BEGIN:VEVENT', 'UID:' + Date.now() + '@ptt-dagitim', 'DTSTAMP:' + f(new Date()), 'DTSTART:' + f(bas), 'DTEND:' + f(bit),
+      'SUMMARY:' + baslik, 'DESCRIPTION:' + aciklama.replace(/\n/g, '\\n').replace(/,/g, '\\,'),
+      'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', 'DESCRIPTION:' + baslik, 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics); a.download = 'hatirlatici.ics';
+    document.body.appendChild(a); a.click(); a.remove();
+    bilgi('Takvim açılınca "Ekle"ye bas. Yarın ' + ayar.saat + "'da bildirim gelecek.");
+  } else {
+    const url = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(baslik) + '&dates=' + f(bas) + '/' + f(bit) + '&details=' + encodeURIComponent(aciklama);
+    window.open(url, '_blank');
+    bilgi('Google Takvim açılınca "Kaydet"e bas. Yarın ' + ayar.saat + "'da bildirim gelecek.");
+  }
+  ayar.hatirlatmaKuruldu = bugun(); kaydet();
+}
+// Uygulama içi uyarı: hatırlatma saati geçtiyse ve önceki günlerden kalan edilemeyen varsa
+function afisHTML(){
+  const [s, d] = (ayar.saat || '10:00').split(':').map(Number), simdi = new Date();
+  const eski = paketler.filter(p => p.durum === 'edilemedi' && p.zaman && p.zaman.slice(0, 10) < bugun());
+  if (!eski.length || simdi.getHours() * 60 + simdi.getMinutes() < s * 60 + d || ayar.afisKapandi === bugun()) return '';
+  return `<div class="afis">⏰ <b>Önceki günlerden ${eski.length} teslim edilemeyen paket var.</b> Bugün tekrar denemek ister misin?
+    <div class="ikili"><button class="btn mavi" id="eskiGeri">↩️ Bekleyenlere al</button><button class="btn" id="afisKapat">Sonra</button></div></div>`;
+}
+// Uygulama açıksa saat gelince ekranda uyarı + bildirim
+setInterval(() => {
+  const [s, d] = (ayar.saat || '10:00').split(':').map(Number), n = new Date();
+  if (n.getHours() === s && n.getMinutes() === d && ayar.sonUyari !== bugun() && paketler.some(p => p.durum === 'edilemedi')) {
+    ayar.sonUyari = bugun(); kaydet(); ciz();
+    try { if (window.Notification && Notification.permission === 'granted') new Notification('📦 Teslim edilemeyen paketler', { body: 'Tekrar teslimata çıkarabilirsin.' }); } catch {}
+    try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch {}
+  }
+}, 30000);
+
+let bilgiZaman;
+function bilgi(t){
+  let d = $('bilgiKutu');
+  if (!d) { d = document.createElement('div'); d.id = 'bilgiKutu'; d.style.cssText = 'position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 84px);background:#1d1d1f;color:#fff;padding:12px 14px;border-radius:12px;z-index:3000;font-size:14px'; document.body.appendChild(d); }
+  d.textContent = t; d.style.display = 'block'; clearTimeout(bilgiZaman); bilgiZaman = setTimeout(() => d.style.display = 'none', 4500);
+}
+
+// ---------- Tıklamalar ----------
+let sebepId = null;
+document.addEventListener('click', async e => {
+  const t = e.target.closest('button,[data-s]'); if (!t) return;
+  const bul = id => paketler.find(p => p.id === id);
+  if (t.dataset.s) { sekme = t.dataset.s; if (sekme === 'harita') await konumAl(); ciz(); window.scrollTo(0, 0); }
+  else if (t.dataset.teslim) { const p = bul(t.dataset.teslim); p.durum = 'teslim'; p.zaman = new Date().toISOString(); p.sebep = ''; kaydet(); bilgi('✅ Teslim edildi. Sıradakine geçiliyor…'); await yenidenSirala(); }
+  else if (t.dataset.edilemedi) { sebepId = t.dataset.edilemedi; $('sebepPanel').classList.add('acik'); }
+  else if (t.closest('#sebepPanel .sebepler')) {
+    let sebep = t.textContent.replace(/^\S+\s/, '');
+    if (sebep === 'Diğer') sebep = prompt('Sebep nedir?') || 'Diğer';
+    const p = bul(sebepId); if (p) { p.durum = 'edilemedi'; p.sebep = sebep; p.zaman = new Date().toISOString(); }
+    $('sebepPanel').classList.remove('acik'); kaydet(); bilgi('❌ Edilemedi olarak işaretlendi. Sıradakine geçiliyor…'); await yenidenSirala();
+  }
+  else if (t.dataset.geri) { const p = bul(t.dataset.geri); p.durum = 'bekliyor'; p.sebep = ''; p.zaman = null; await yenidenSirala(); }
+  else if (t.dataset.sil) { if (confirm('Bu paket silinsin mi?')) { paketler = paketler.filter(p => p.id !== t.dataset.sil); kaydet(); ciz(); } }
+  else if (t.id === 'siralaBtn') { bilgi('📍 Konum alınıyor…'); await yenidenSirala(); bilgi('Sıralandı.'); }
+  else if (t.id === 'hatirlatBtn') { try { window.Notification && Notification.permission === 'default' && Notification.requestPermission(); } catch {} hatirlatKur(); }
+  else if (t.id === 'eskiGeri') { paketler.forEach(p => { if (p.durum === 'edilemedi' && p.zaman && p.zaman.slice(0, 10) < bugun()) { p.durum = 'bekliyor'; p.sebep = ''; p.zaman = null; } }); sekme = 'bekleyen'; await yenidenSirala(); }
+  else if (t.id === 'afisKapat') { ayar.afisKapandi = bugun(); kaydet(); ciz(); }
+  else if (t.id === 'ekleBtn') { $('ekPanel').classList.add('acik'); }
+  else if (t.id === 'ayarBtn') { $('saatAyar').value = ayar.saat; $('haritaAyar').value = ayar.harita; $('ayarPanel').classList.add('acik'); }
+  else if (t.id === 'yeniGun') { if (confirm('Teslim edilenler temizlensin mi?')) { paketler = paketler.filter(p => p.durum !== 'teslim'); kaydet(); ciz(); $('ayarPanel').classList.remove('acik'); } }
+  else if (t.id === 'elleBtn') { adayEkle({ isim: '', adres: '', tel: '', teller: [] }); }
+  else if (t.classList.contains('kapat')) { t.closest('.panel').classList.remove('acik'); }
+});
+$('saatAyar').onchange = e => { ayar.saat = e.target.value || '10:00'; kaydet(); ciz(); bilgi('Hatırlatma saati: ' + ayar.saat); };
+$('haritaAyar').onchange = e => { ayar.harita = e.target.value; kaydet(); ciz(); };
+
+// ---------- Yazı okuma (OCR) ----------
+let worker = null;
 async function getWorker(){
   if (worker) return worker;
-  $('durum').textContent = 'Türkçe okuma paketi yükleniyor (ilk seferde 10-20 sn sürebilir)…';
+  $('durum').textContent = 'Okuma motoru yükleniyor (ilk seferde 10-20 sn)…';
   worker = await Tesseract.createWorker('tur', 1, {
     workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
     corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
     langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-    logger: m => {
-      if (m.status === 'recognizing text') {
-        $('dolum').style.width = Math.round(m.progress * 100) + '%';
-        $('durum').textContent = 'Okunuyor… %' + Math.round(m.progress * 100);
-      }
-    },
-    errorHandler: e => { $('durum').textContent = 'Hata: ' + hataMetni(e); }
+    logger: m => { if (m.status === 'recognizing text') $('dolum').style.width = Math.round(m.progress * 100) + '%'; }
   });
   return worker;
 }
-
-function resimYukle(src){
-  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
-}
-function dataUrl(file){
-  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
-}
+const resimYukle = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+const dataUrl = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
 async function resimAc(file){
   try { if (window.createImageBitmap) return await createImageBitmap(file); } catch {}
   try { return await resimYukle(URL.createObjectURL(file)); } catch {}
@@ -106,76 +349,67 @@ async function resimAc(file){
   return null;
 }
 async function hazirla(file){
-  const img = await resimAc(file);
-  if (!img) return null;
-  // Küçük fotoğrafı büyüt, büyüğü küçült (motor ~2000px'te en iyi okur)
-  const hedef = 2000, s = Math.min(2.5, hedef / Math.max(img.width, img.height));
-  const W = Math.round(img.width * s), H = Math.round(img.height * s);
+  const img = await resimAc(file); if (!img) return null;
+  const s = Math.min(2.5, 2000 / Math.max(img.width, img.height)), W = Math.round(img.width * s), H = Math.round(img.height * s);
   const yap = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H); return [c, x]; };
-  const [orij] = yap();
-  // Gri + kontrast
-  const [gri, gx] = yap();
+  const [orij] = yap(), [gri, gx] = yap();
   const d = gx.getImageData(0, 0, W, H), p = d.data, hist = new Array(256).fill(0);
-  let toplam = 0;
-  for (let i = 0; i < p.length; i += 4) { const g = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2]; toplam += g; }
-  const koyu = toplam / (p.length / 4) < 110;
-  for (let i = 0; i < p.length; i += 4) {
-    let g = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
-    if (koyu) g = 255 - g;
-    g = Math.max(0, Math.min(255, (g - 128) * 1.5 + 128));
-    p[i] = p[i+1] = p[i+2] = g; hist[Math.round(g)]++;
-  }
+  let top = 0; for (let i = 0; i < p.length; i += 4) top += 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
+  const koyu = top / (p.length / 4) < 110;
+  for (let i = 0; i < p.length; i += 4) { let g = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2]; if (koyu) g = 255 - g; g = Math.max(0, Math.min(255, (g - 128) * 1.5 + 128)); p[i] = p[i+1] = p[i+2] = g; hist[Math.round(g)]++; }
   gx.putImageData(d, 0, 0);
-  // Siyah-beyaz (Otsu eşiği)
   const n = p.length / 4; let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
-  let sB = 0, wB = 0, enIyi = 0, esik = 128;
-  for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = n - wB; if (!wF) break; sB += t * hist[t];
-    const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > enIyi) { enIyi = v; esik = t; } }
-  const [ikili, ix] = yap(); const d2 = gx.getImageData(0, 0, W, H), q = d2.data;
+  let sB = 0, wB = 0, en = 0, esik = 128;
+  for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = n - wB; if (!wF) break; sB += t * hist[t]; const v = wB * wF * (sB / wB - (sum - sB) / wF) ** 2; if (v > en) { en = v; esik = t; } }
+  const [ikili, ix] = yap(), d2 = gx.getImageData(0, 0, W, H), q = d2.data;
   for (let i = 0; i < q.length; i += 4) { const v = q[i] > esik ? 255 : 0; q[i] = q[i+1] = q[i+2] = v; }
   ix.putImageData(d2, 0, 0);
   return { orij, gri, ikili };
 }
 
-const ADRES = /(adres|mahallesi|sokağı|caddesi|mah\b|mah\.|mahalle|mh\.?\b|sok\b|sk\.?\b|sokak|sokağı|cad\b|cd\.?\b|cadde|bulvar|blv\.?|no\s*[:.]?\s*\d|kat\s*[:.]?\s*\d|daire\b|\bd\s*[:.]\s*\d|apt|apartman|sitesi|blok|bornova|izmir|\b35\d{3}\b)/i;
-const MAH = /(mah\b|mah\.|mahalle|mh\.?\b)/i;
-const ATLA = /(tel\b|gsm|telefon|\+90|\b0?5\d{2}[\s-]?\d{3}|vergi|e-?posta|@|mersis|ticaret sicil|fatura|iban|web:|www\.)/i;
-
-// --- Okunan yazıyı temizle: güveni düşük kelimeleri ve anlamsız satırları at ---
 function anlamli(sat){
-  const t = sat.replace(/\s+/g, ' ').trim();
-  if (t.length < 3) return false;
-  const harf = (t.match(/[0-9A-Za-zÇĞİÖŞÜçğıöşü]/g) || []).length;
-  if (harf / t.length < 0.65) return false;                       // çok fazla işaret/çöp
-  const kelimeler = t.split(' ');
-  const iyi = kelimeler.filter(k => /^[A-Za-zÇĞİÖŞÜçğıöşü]{3,}[.:,]?$/.test(k) || /\d/.test(k)).length;
-  return iyi / kelimeler.length >= 0.5;                             // kelimelerin yarısı gerçek kelime/sayı olmalı
+  const t = sat.replace(/\s+/g, ' ').trim(); if (t.length < 3) return false;
+  const harf = (t.match(/[0-9A-Za-zÇĞİÖŞÜçğıöşü]/g) || []).length; if (harf / t.length < 0.65) return false;
+  const k = t.split(' '), iyi = k.filter(w => /^[A-Za-zÇĞİÖŞÜçğıöşü]{3,}[.:,]?$/.test(w) || /\d/.test(w)).length;
+  return iyi / k.length >= 0.5;
 }
 function temizSatirlar(r){
-  const out = [];
+  const out = [], tem = x => x.replace(/[|«»©®_~]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (r.blocks && r.blocks.length) {
     for (const b of r.blocks) for (const p of (b.paragraphs || [])) for (const l of (p.lines || [])) {
       if (l.confidence < 50) continue;
       const kel = (l.words || []).filter(w => w.confidence >= 45).map(w => w.text);
-      const t = (kel.length ? kel.join(' ') : l.text).replace(/[|«»©®_~]+/g, ' ').replace(/\s+/g, ' ').trim();
-      if (anlamli(t)) out.push(t);
+      const t = tem(kel.length ? kel.join(' ') : l.text); if (anlamli(t)) out.push(t);
     }
     return out;
   }
-  return r.text.split('\n').map(x => x.replace(/[|«»©®_~]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(anlamli);
+  return r.text.split('\n').map(tem).filter(anlamli);
 }
 
-const ETIKET = /(sayın|sayin|alıcı|alici|gönderen|gonderen|teslim|ad soyad|adı soyadı|müşteri|musteri)\s*:?\s*/i;
+const ADRES = /(adres|mahallesi|sokağı|caddesi|mah\b|mah\.|mahalle|mh\.?\b|sok\b|sk\.?\b|sokak|cad\b|cd\.?\b|cadde|bulvar|blv\.?|no\s*[:.]?\s*\d|kat\s*[:.]?\s*\d|daire\b|\bd\s*[:.]\s*\d|apt|apartman|sitesi|blok|bornova|izmir|\b35\d{3}\b)/i;
+const MAH = /(mah\b|mah\.|mahalle|mh\.?\b)/i;
+const ATLA = /(tel\b|gsm|telefon|\+90|\b0?5\d{2}[\s-]?\d{3}|vergi|e-?posta|@|mersis|ticaret sicil|fatura|iban|web:|www\.)/i;
+const ETIKET = /(sayın|sayin|alıcı|alici|teslim alacak|ad soyad|adı soyadı|müşteri|musteri)\s*:?\s*/i;
+const GONDEREN = /(gönderen|gonderen|gönderici|gonderici|satıcı|satici)/i;
 const ISIM_DEGIL = /(fatura|tarih|zaman|tutar|toplam|vergi|no\b|tip|şekli|sekli|kdv|iskonto|ödeme|odeme|mal|hizmet|ltd|şti|a\.ş|san\.|tic\.|arşiv|arsiv|kargo|ptt|barkod|adet|desi|tel|e-?posta)/i;
 function isimMi(t){
   const x = t.replace(ETIKET, '').trim();
-  if (!x || /\d/.test(x) || x.includes(':') || ISIM_DEGIL.test(x) || ADRES.test(x)) return null;
+  if (!x || /\d/.test(x) || x.includes(':') || ISIM_DEGIL.test(x) || ADRES.test(x) || GONDEREN.test(x)) return null;
   const k = x.split(' ').filter(Boolean);
-  if (k.length < 2 || k.length > 4) return null;
-  if (!k.every(w => /^[A-Za-zÇĞİÖŞÜçğıöşü.]{2,}$/.test(w))) return null;
+  if (k.length < 2 || k.length > 4 || !k.every(w => /^[A-Za-zÇĞİÖŞÜçğıöşü.]{2,}$/.test(w))) return null;
   return x;
 }
-function adresleriBul(satirlar){
+// Türk telefon numaralarını bul ve 05XXXXXXXXX / 0XXXXXXXXXX biçimine getir
+function telefonlar(t){
+  const out = [], re = /(?:\+?\s*90[\s-]*)?\(?0?\s*([2-5]\d{2})\)?[\s.-]*(\d{3})[\s.-]*(\d{2})[\s.-]*(\d{2})(?!\d)/g;
+  let m; while ((m = re.exec(t))) {
+    const alan = m[1];
+    if (!/^5\d\d$/.test(alan) && !/^(2[1-9]\d|3[1-9]\d|4[1-9]\d)$/.test(alan)) continue; // geçerli cep ya da sabit hat alan kodu
+    const no = '0' + alan + m[2] + m[3] + m[4]; if (!out.includes(no)) out.push(no);
+  }
+  return out;
+}
+function paketleriBul(satirlar){
   const sonuc = []; let i = 0;
   while (i < satirlar.length) {
     const s = satirlar[i];
@@ -183,14 +417,24 @@ function adresleriBul(satirlar){
       const grup = [s.replace(/^adres\s*:?\s*/i, '')]; let j = i + 1;
       while (j < satirlar.length && j <= i + 3 && ADRES.test(satirlar[j]) && !ATLA.test(satirlar[j]) && !(MAH.test(satirlar[j]) && MAH.test(grup.join(' ')))) { grup.push(satirlar[j]); j++; }
       let adres = grup.join(' ').replace(/\s+/g, ' ').trim();
-      const m = adres.match(/^(.*\b(bornova|izmir|antalya|istanbul|ankara|türkiye|\d{5}))\b/i); if (m) adres = m[1];
-      if (adres.length > 8 && (MAH.test(adres) || /(sk\b|sok|cad|cd\b|bulv|mahallesi|sokak|caddesi)/i.test(adres))) {
-        let isim = '';
+      const kes = adres.match(/^(.*\b(bornova|izmir|antalya|istanbul|ankara|türkiye|\d{5}))\b/i); if (kes) adres = kes[1];
+      // Bu adres "Gönderen" bölümünde mi? En yakın etiket yukarı doğru aranır.
+      let gonderenBolumu = false;
+      for (let k = i - 1; k >= Math.max(0, i - 5); k--) { if (GONDEREN.test(satirlar[k])) { gonderenBolumu = true; break; } if (ETIKET.test(satirlar[k])) break; }
+      if (!gonderenBolumu && adres.length > 8 && (MAH.test(adres) || /(sk\b|sok|cad|cd\b|bulv|mahallesi|sokak|caddesi)/i.test(adres))) {
+        let isim = '', isimSatir = i;
         for (let k = i - 1; k >= Math.max(0, i - 3) && !isim; k--) {
-          isim = isimMi(satirlar[k]) || '';
-          if (!isim && ETIKET.test(satirlar[k]) && satirlar[k + 1] && k + 1 < i) isim = isimMi(satirlar[k + 1]) || '';
+          isim = isimMi(satirlar[k]) || ''; if (isim) isimSatir = k;
+          if (!isim && ETIKET.test(satirlar[k]) && k + 1 < i) { isim = isimMi(satirlar[k + 1]) || ''; if (isim) isimSatir = k + 1; }
         }
-        sonuc.push({ isim, adres });
+        // Telefon: yalnızca bu alıcı bloğunun içinden (isim satırından adresin 3 satır sonrasına kadar, başka bölüme geçmeden)
+        const teller = [];
+        for (let k = isimSatir; k < Math.min(satirlar.length, j + 3); k++) {
+          if (k >= j && (GONDEREN.test(satirlar[k]) || ETIKET.test(satirlar[k]) || (ADRES.test(satirlar[k]) && !ATLA.test(satirlar[k])))) break;
+          if (/vergi|mersis|iban|fax|faks/i.test(satirlar[k])) continue;
+          telefonlar(satirlar[k]).forEach(t => { if (!teller.includes(t)) teller.push(t); });
+        }
+        sonuc.push({ isim, adres, teller, tel: teller.length === 1 ? teller[0] : '' });
       }
       i = j;
     } else i++;
@@ -198,143 +442,73 @@ function adresleriBul(satirlar){
   return sonuc;
 }
 
-function adaylariGoster(adresler, temizMetin){
-  const k = $('adaylar'); k.innerHTML = '';
-  if (!adresler.length) {
-    k.innerHTML = '<div style="font-size:15px;font-weight:600;color:#b3261e;margin-bottom:8px">Burada adres yok.</div>' +
-      '<div style="font-size:13px;color:#555;margin-bottom:6px">Yazan yazılar şunlar:</div>' +
-      '<div style="font-size:17px;line-height:1.5;white-space:pre-wrap;background:#f6f6f6;padding:12px;border-radius:8px"></div>';
-    k.lastChild.textContent = temizMetin || '(okunabilir yazı bulunamadı)';
-    return;
-  }
-  adresler.forEach(a => {
-    const d = document.createElement('div'); d.className = 'aday';
-    d.innerHTML = '<div style="font-size:12px;color:#555">👤 İsim</div><input style="width:100%;font-size:16px;padding:8px;border:1px solid #ccc;border-radius:8px;margin-bottom:6px">' +
-                  '<div style="font-size:12px;color:#555">🏠 Adres</div><textarea></textarea><button class="ana">➕ Listeye ekle</button>';
-    d.querySelector('input').value = a.isim; d.querySelector('input').placeholder = 'İsim bulunamadı';
-    d.querySelector('textarea').value = a.adres;
-    d.querySelector('button').onclick = () => {
-      const v = d.querySelector('textarea').value.trim(); if (!v) return;
-      liste.push({ isim: d.querySelector('input').value.trim(), adres: v }); kaydet(); listeyiCiz(); d.remove();
-    };
-    k.appendChild(d);
-  });
-}
-
-function listeyiCiz(){
-  $('sayi').textContent = liste.length;
-  $('liste').innerHTML = liste.map((x, i) =>
-    `<div class="satir"><span class="no-k">${i+1}</span><span style="flex:1">${x.isim ? '<b>'+x.isim.replace(/</g,'&lt;')+'</b><br>' : ''}${x.adres.replace(/</g,'&lt;')}</span>` +
-    `<span class="mes">${x.mesafe != null ? (x.mesafe < 1 ? Math.round(x.mesafe*1000)+' m' : x.mesafe.toFixed(1)+' km') : (x.bulunamadi ? '❓' : '')}</span>` +
-    `<button class="sil" data-i="${i}">Sil</button></div>`).join('') ||
-    '<div style="font-size:13px;color:#777">Henüz adres yok.</div>';
-  document.querySelectorAll('.sil').forEach(b => b.onclick = () => { liste.splice(+b.dataset.i, 1); kaydet(); listeyiCiz(); });
+function adayEkle(a){
+  const d = document.createElement('div'); d.className = 'kart';
+  const telAlan = a.teller && a.teller.length > 1
+    ? `<select class="tel"><option value="">— ${a.teller.length} numara bulundu, doğru olanı seç —</option>${a.teller.map(t => `<option>${t}</option>`).join('')}<option value="">Hiçbiri</option></select><div class="uyari">Birden fazla numara var; yanlış kişiyi aramamak için kendin seç.</div>`
+    : `<input class="tel" type="tel" inputmode="tel" placeholder="Numara bulunamadı (isteğe bağlı)">`;
+  d.innerHTML = `<label class="alan">👤 İsim</label><input class="isim" placeholder="İsim bulunamadı">
+    <label class="alan">🏠 Adres</label><textarea class="adr" placeholder="Mahalle, sokak, no…"></textarea>
+    <label class="alan">📞 Telefon (alıcının)</label>${telAlan}
+    <button class="btn yesil">➕ Listeye ekle</button><div class="uyari hata"></div>`;
+  d.querySelector('.isim').value = a.isim || ''; d.querySelector('.adr').value = a.adres || '';
+  if (d.querySelector('input.tel')) d.querySelector('input.tel').value = a.tel || '';
+  d.querySelector('button').onclick = () => {
+    const adres = d.querySelector('.adr').value.trim();
+    let tel = (d.querySelector('.tel').value || '').replace(/\D/g, '');
+    if (!adres) { d.querySelector('.hata').textContent = 'Adres boş olamaz.'; return; }
+    if (tel) { if (tel.startsWith('90')) tel = tel.slice(2); if (!tel.startsWith('0')) tel = '0' + tel; if (!/^0[2-5]\d{9}$/.test(tel)) { d.querySelector('.hata').textContent = 'Telefon numarası geçersiz görünüyor (0 ile başlayan 11 hane olmalı).'; return; } }
+    const p = { id: 'p' + Date.now() + Math.random().toString(36).slice(2, 6), isim: d.querySelector('.isim').value.trim(), adres, tel, durum: 'bekliyor', eklenme: new Date().toISOString() };
+    paketler.push(p); kaydet(); d.remove(); bilgi('📦 Eklendi: ' + (p.isim || p.adres)); sekme = 'bekleyen'; ciz(); koordinatBul(p);
+  };
+  $('adaylar').appendChild(d); d.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function oku(e){
   const file = e.target.files[0]; if (!file) return;
-  $('onizleme').src = URL.createObjectURL(file); $('onizleme').style.display = 'block';
-  $('bar').style.display = 'block'; $('dolum').style.width = '0';
-  $('ham').value = ''; $('adaylar').innerHTML = '';
+  $('bar').style.display = 'block'; $('dolum').style.width = '0'; $('adaylar').innerHTML = '';
   try {
-    if (typeof Tesseract === 'undefined') throw new Error('Okuma motoru indirilemedi (sayfayı yenile)');
-    $('durum').textContent = 'Fotoğraf hazırlanıyor… (' + (file.type || 'tür bilinmiyor') + ', ' + Math.round(file.size/1024) + ' KB)';
-    let g = null;
-    try { g = await hazirla(file); } catch { g = null; }
+    if (typeof Tesseract === 'undefined') throw new Error('Okuma motoru indirilemedi, sayfayı yenile');
+    $('durum').textContent = 'Fotoğraf hazırlanıyor…';
+    let g = null; try { g = await hazirla(file); } catch {}
     const w = await getWorker();
-    const t0 = Date.now();
-    // Birkaç farklı şekilde oku, en iyisini al
-    const denemeler = g
-      ? [[g.gri, '3', 'normal'], [g.gri, '4', 'sütun'], [g.orij, '11', 'dağınık yazı'], [g.ikili, '6', 'siyah-beyaz']]
-      : [[file, '3', 'ham']];
-    let data = null, puanEn = -1; const tumMetinler = [];
-    for (let k = 0; k < denemeler.length; k++) {
-      const [gorsel, psm] = denemeler[k];
-      $('durum').textContent = `Okunuyor… (${k+1}/${denemeler.length})`;
-      await w.setParameters({ tessedit_pageseg_mode: psm, preserve_interword_spaces: '1' });
-      const r = (await w.recognize(gorsel, {}, { text: true, blocks: true })).data;
-      r.temiz = temizSatirlar(r); tumMetinler.push(r.temiz);
-      const temiz = r.temiz.join('').replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü]/g, '');
-      const puan = r.confidence * Math.min(1, temiz.length / 6) + temiz.length * 0.2;
-      if (puan > puanEn) { puanEn = puan; data = r; }
+    const den = g ? [[g.gri, '3'], [g.gri, '4'], [g.orij, '11'], [g.ikili, '6']] : [[file, '3']];
+    let en = null, puanEn = -1; const hepsi = [];
+    for (let k = 0; k < den.length; k++) {
+      $('durum').textContent = `Okunuyor… (${k + 1}/${den.length})`;
+      await w.setParameters({ tessedit_pageseg_mode: den[k][1], preserve_interword_spaces: '1' });
+      const r = (await w.recognize(den[k][0], {}, { text: true, blocks: true })).data;
+      r.temiz = temizSatirlar(r); hepsi.push(r.temiz);
+      const harf = r.temiz.join('').replace(/[^0-9A-Za-zÇĞİÖŞÜçğıöşü]/g, '').length;
+      const puan = r.confidence * Math.min(1, harf / 6) + harf * 0.2;
+      if (puan > puanEn) { puanEn = puan; en = r; }
     }
-    $('ham').value = data.text.trim() || '(hiç yazı bulunamadı)';
-    const gorulen = new Set(), adresler = [];
-    for (const m of [data.temiz, ...tumMetinler]) for (const a of adresleriBul(m)) {
-      const anahtar = a.adres.toLocaleLowerCase('tr').replace(/[^a-zçğıöşü0-9]/g, '').slice(0, 25);
-      if (!gorulen.has(anahtar)) { gorulen.add(anahtar); adresler.push(a); }
+    const gorulen = new Set(), bulunan = [];
+    for (const m of [en.temiz, ...hepsi]) for (const a of paketleriBul(m)) {
+      const k = a.adres.toLocaleLowerCase('tr').replace(/[^a-zçğıöşü0-9]/g, '').slice(0, 25);
+      const var_ = bulunan.find(x => x._k === k);
+      if (var_) { a.teller.forEach(t => { if (!var_.teller.includes(t)) var_.teller.push(t); }); var_.tel = var_.teller.length === 1 ? var_.teller[0] : ''; if (!var_.isim) var_.isim = a.isim; continue; }
+      if (!gorulen.has(k)) { gorulen.add(k); a._k = k; bulunan.push(a); }
     }
-    adaylariGoster(adresler, data.temiz.join('\n'));
-    $('durum').textContent = `Bitti (${((Date.now()-t0)/1000).toFixed(1)} sn) · ${adresler.length} adres bulundu · güven %${Math.round(data.confidence)}`;
     $('dolum').style.width = '100%';
-  } catch (err) {
-    $('durum').innerHTML = '<span class="no">Hata: ' + hataMetni(err) + '</span>';
-  }
+    if (bulunan.length) { $('durum').textContent = `${bulunan.length} adres bulundu. Kontrol edip listeye ekle.`; bulunan.forEach(adayEkle); }
+    else {
+      $('durum').textContent = '';
+      const d = document.createElement('div'); d.className = 'kart';
+      d.innerHTML = '<div style="font-weight:700;color:#b3261e;margin-bottom:6px">Burada adres yok.</div><div class="kucuk" style="margin-bottom:6px">Yazan yazılar şunlar:</div><div style="font-size:16px;line-height:1.5;white-space:pre-wrap;background:#f6f6f6;padding:10px;border-radius:8px"></div>';
+      d.lastChild.textContent = en.temiz.join('\n') || '(okunabilir yazı bulunamadı)';
+      $('adaylar').appendChild(d);
+    }
+  } catch (err) { $('durum').innerHTML = '<span class="uyari">Hata: ' + esc(err && (err.message || err)) + '</span>'; }
   e.target.value = '';
 }
 $('kamera').addEventListener('change', oku);
 $('galeri').addEventListener('change', oku);
 
-// ---- Sıralama ----
-const bekle = ms => new Promise(r => setTimeout(r, ms));
-function km(a, b){
-  const R = 6371, r = x => x * Math.PI / 180;
-  const dLat = r(b.lat - a.lat), dLon = r(b.lon - a.lon);
-  const h = Math.sin(dLat/2)**2 + Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLon/2)**2;
-  return 2 * R * Math.asin(Math.sqrt(h));
+// Başlangıç
+paketler.filter(p => p.durum === 'bekliyor' && !p.lat && !p.bulunamadi).forEach(koordinatBul);
+ciz(); yenidenSirala();
 }
-// Varsayılan bölge Bornova. Adreste başka ilçe/il yazıyorsa ona göre arar.
-const BASKA_YER = /\b(karşıyaka|karsiyaka|bayraklı|bayrakli|konak|buca|çiğli|cigli|gaziemir|karabağlar|karabaglar|narlıdere|balçova|kemalpaşa|kemalpasa|menemen|torbalı|torbali|urla|çeşme|cesme|seferihisar|menderes|aliağa|foça|tire|ödemiş|bergama|dikili|kepez|muratpaşa|konyaaltı|antalya|istanbul|ankara|bursa|manisa|aydın|denizli|muğla)\b/i;
-async function koordinat(adres){
-  const temiz = adres.replace(/\b(bornova|izmir|İzmir|türkiye|turkiye)\b/gi, '').replace(/\b35\d{3}\b/, '').replace(/[\/]/g, ' ').trim();
-  const baskaYer = !/bornova/i.test(adres) && BASKA_YER.test(adres);
-  const denemeler = baskaYer ? [adres + ', Türkiye'] : [temiz + ', Bornova, İzmir'];
-  const mah = adres.match(/([A-Za-zÇĞİÖŞÜçğıöşü0-9 .]+?)\s*(mah\b|mah\.|mahallesi|mh\.?)/i);
-  if (mah) denemeler.push(mah[1].trim() + (baskaYer ? ' Mahallesi, ' + adres.match(BASKA_YER)[1] : ' Mahallesi, Bornova, İzmir'));
-  if (!baskaYer) denemeler.push(temiz + ', İzmir');
-  for (const q of denemeler) {
-    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=tr' + (baskaYer ? '' : '&viewbox=27.15,38.52,27.35,38.40') + '&q=' + encodeURIComponent(q);
-    const r = await fetch(url, { headers: { 'Accept-Language': 'tr' } });
-    const j = await r.json();
-    await bekle(1100);
-    if (j[0]) return { lat: +j[0].lat, lon: +j[0].lon };
-  }
-  return null;
-}
-$('sirala').onclick = async () => {
-  if (!liste.length) { $('siraDurum').textContent = 'Önce listeye adres ekle.'; return; }
-  $('siraDurum').textContent = 'Konum alınıyor…';
-  let ben;
-  try {
-    ben = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(
-      p => res({ lat: p.coords.latitude, lon: p.coords.longitude }), rej, { enableHighAccuracy: true, timeout: 15000 }));
-  } catch (e) {
-    $('siraDurum').innerHTML = '<span class="no">Konum alınamadı: ' + hataMetni(e) + '. Konum iznini aç (sayfa https linkten açılmalı).</span>'; return;
-  }
-  for (let i = 0; i < liste.length; i++) {
-    const x = liste[i];
-    if (!x.lat) {
-      $('siraDurum').textContent = `Adresler haritada bulunuyor… ${i+1}/${liste.length}`;
-      try { const k = await koordinat(x.adres); if (k) { x.lat = k.lat; x.lon = k.lon; x.bulunamadi = false; } else x.bulunamadi = true; }
-      catch { x.bulunamadi = true; }
-    }
-  }
-  liste.forEach(x => x.mesafe = x.lat ? km(ben, x) : null);
-  liste.sort((a, b) => (a.mesafe ?? 1e9) - (b.mesafe ?? 1e9));
-  kaydet(); listeyiCiz();
-  const yok = liste.filter(x => x.bulunamadi).length;
-  $('siraDurum').innerHTML = '<span class="ok">✔ Sıralandı.</span>' + (yok ? ` ${yok} adres haritada bulunamadı (❓), en sona kondu.` : '');
-};
-
-$('kopyala').addEventListener('click', async () => {
-  const txt = 'ADRESLER:\n' + [...document.querySelectorAll('#adaylar textarea')].map(t => '- ' + t.value).join('\n') +
-              '\n\nHAM YAZI:\n' + $('ham').value + '\n\n' + $('durum').textContent;
-  try { await navigator.clipboard.writeText(txt); } catch { $('ham').select(); document.execCommand('copy'); }
-  $('kopyala').textContent = 'Kopyalandı ✔';
-  setTimeout(() => $('kopyala').textContent = 'Sonucu kopyala (bana gönder)', 2000);
-});
-
-listeyiCiz();
 </script>
 </body>
 </html>
